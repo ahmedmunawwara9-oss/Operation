@@ -1,0 +1,201 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default-Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Bootstrapped General Manager (must have verified email)
+    function isBootstrappedAdmin() {
+      return isSignedIn() &&
+             request.auth.token.email == 'ahmedmunawwara9@gmail.com' &&
+             request.auth.token.email_verified == true;
+    }
+
+    // General Manager check (for single-doc get, create, update, delete)
+    function isGeneralManager() {
+      return isBootstrappedAdmin() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'general_manager' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true
+      );
+    }
+
+    // Active authorized user check
+    function isAuthorizedUser() {
+      return isBootstrappedAdmin() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true
+      );
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'email', 'displayName', 'role', 'roleTitle', 'isActive', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['userId', 'email', 'displayName', 'role', 'roleTitle', 'isActive', 'activationCode', 'activatedAt', 'createdBy', 'createdAt', 'updatedAt']) &&
+             isValidId(data.userId) &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 256 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 128 &&
+             data.role in ['general_manager', 'operations_manager', 'supervisor', 'operator'] &&
+             data.roleTitle is string && data.roleTitle.size() >= 1 && data.roleTitle.size() <= 64 &&
+             data.isActive is bool &&
+             (!('activationCode' in data) || (data.activationCode is string && data.activationCode.size() <= 32)) &&
+             (!('activatedAt' in data) || data.activatedAt is timestamp) &&
+             (!('createdBy' in data) || (data.createdBy is string && data.createdBy.size() <= 128)) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidTrip(data) {
+      return data.keys().hasAll(['tripId', 'busId']) &&
+             data.keys().hasOnly(['tripId', 'busId', 'driverName', 'origin', 'destination', 'status', 'updatedAt']) &&
+             data.tripId is string && data.tripId.size() >= 1 && data.tripId.size() <= 64 && data.tripId.matches('^[a-zA-Z0-9_\\-]+$') &&
+             data.busId is string && data.busId.size() >= 1 && data.busId.size() <= 32 &&
+             (!('driverName' in data) || (data.driverName is string && data.driverName.size() <= 128)) &&
+             (!('origin' in data) || (data.origin is string && data.origin.size() <= 128)) &&
+             (!('destination' in data) || (data.destination is string && data.destination.size() <= 128)) &&
+             (!('status' in data) || (data.status is string && data.status.size() <= 64)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidScheduleArchive(data) {
+      return data.keys().hasAll([
+               'archiveId', 'title', 'scheduleDate', 'visibility',
+               'totalTrips', 'totalBuses', 'completedTrips', 'trips',
+               'createdBy', 'createdByName', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'archiveId', 'title', 'scheduleDate', 'notes', 'visibility',
+               'totalTrips', 'totalBuses', 'completedTrips', 'trips',
+               'createdBy', 'createdByName', 'createdAt', 'updatedAt'
+             ]) &&
+             isValidId(data.archiveId) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+             data.scheduleDate is string && data.scheduleDate.size() >= 4 && data.scheduleDate.size() <= 32 &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+             data.visibility == 'team' &&
+             data.totalTrips is int && data.totalTrips >= 1 && data.totalTrips <= 500 &&
+             data.totalBuses is int && data.totalBuses >= 0 && data.totalBuses <= 500 &&
+             data.completedTrips is int && data.completedTrips >= 0 && data.completedTrips <= 500 &&
+             data.trips is list && data.trips.size() >= 1 && data.trips.size() <= 500 && data.trips[0] is map &&
+             data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128 &&
+             data.createdByName is string && data.createdByName.size() >= 1 && data.createdByName.size() <= 128 &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    // 4. Users Collection
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isGeneralManager());
+      // No get()/exists() in allow list (Cost-Optimization Clause)
+      allow list: if isBootstrappedAdmin() ||
+                  (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.createdBy == request.auth.uid));
+      allow create: if isSignedIn() &&
+                    isValidId(userId) &&
+                    isValidUser(incoming()) &&
+                    incoming().userId == userId &&
+                    incoming().createdAt == request.time &&
+                    incoming().updatedAt == request.time &&
+                    (
+                      isGeneralManager() ||
+                      (isOwner(userId) && isBootstrappedAdmin() && incoming().role == 'general_manager' && incoming().isActive == true)
+                    );
+      allow update: if isSignedIn() &&
+                    isValidId(userId) &&
+                    isValidUser(incoming()) &&
+                    incoming().userId == existing().userId &&
+                    incoming().email == existing().email &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().updatedAt == request.time &&
+                    (
+                      // General Manager can update profile, role, and activation status (cannot deactivate self)
+                      (
+                        isGeneralManager() &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role', 'roleTitle', 'isActive', 'activationCode', 'activatedAt', 'updatedAt']) &&
+                        (userId != request.auth.uid || incoming().isActive == true) &&
+                        (!('activatedAt' in incoming()) || incoming().activatedAt == request.time || (('activatedAt' in existing()) && incoming().activatedAt == existing().activatedAt))
+                      ) ||
+                      // User activating their own pending account in-app
+                      (
+                        isOwner(userId) &&
+                        existing().isActive == false &&
+                        incoming().isActive == true &&
+                        incoming().role == existing().role &&
+                        incoming().roleTitle == existing().roleTitle &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'activatedAt', 'updatedAt']) &&
+                        incoming().activatedAt == request.time
+                      ) ||
+                      // User updating own display name only
+                      (
+                        isOwner(userId) &&
+                        incoming().isActive == existing().isActive &&
+                        incoming().role == existing().role &&
+                        incoming().roleTitle == existing().roleTitle &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+                      )
+                    );
+      allow delete: if isValidId(userId) && isGeneralManager() && userId != request.auth.uid;
+    }
+
+    // 5. Trips Collection
+    match /trips/{tripId} {
+      allow get: if isValidId(tripId) && isAuthorizedUser();
+      allow list: if isSignedIn() && resource.data.tripId is string;
+      allow create: if isValidId(tripId) && isAuthorizedUser() && isValidTrip(incoming()) && incoming().tripId == tripId;
+      allow update: if isValidId(tripId) && isAuthorizedUser() && isValidTrip(incoming()) && incoming().tripId == existing().tripId;
+      allow delete: if isValidId(tripId) && isGeneralManager();
+    }
+
+    // 6. Schedule Archives Collection
+    match /schedule_archives/{archiveId} {
+      allow get: if isValidId(archiveId) && isAuthorizedUser();
+      // Cost-optimized list query: no get()/exists() in allow list
+      allow list: if isBootstrappedAdmin() ||
+                  (isSignedIn() && (resource.data.createdBy == request.auth.uid || resource.data.visibility == 'team'));
+      allow create: if isValidId(archiveId) &&
+                    isAuthorizedUser() &&
+                    isValidScheduleArchive(incoming()) &&
+                    incoming().archiveId == archiveId &&
+                    incoming().createdBy == request.auth.uid &&
+                    incoming().createdAt == request.time &&
+                    incoming().updatedAt == request.time;
+      allow update: if isValidId(archiveId) &&
+                    isAuthorizedUser() &&
+                    isValidScheduleArchive(incoming()) &&
+                    incoming().archiveId == existing().archiveId &&
+                    incoming().createdBy == existing().createdBy &&
+                    incoming().createdByName == existing().createdByName &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().updatedAt == request.time &&
+                    (isGeneralManager() || existing().createdBy == request.auth.uid) &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['title', 'notes', 'scheduleDate', 'updatedAt']);
+      allow delete: if isValidId(archiveId) &&
+                    (isGeneralManager() || (isAuthorizedUser() && existing().createdBy == request.auth.uid));
+    }
+  }
+}

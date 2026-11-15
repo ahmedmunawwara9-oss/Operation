@@ -1,0 +1,6 @@
+{
+  "name": "درة المنورة لنقل الحجاج والمعتمرين - مركز مراقبة وتشغيل الحافلات",
+  "description": "درة المنورة لنقل الحجاج والمعتمرين (DMTC) - مركز مراقبة وتشغيل الحافلات والعمليات المباشرة",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

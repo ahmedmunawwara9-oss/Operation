@@ -1,0 +1,198 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-cairo: 'Cairo', sans-serif;
+}
+
+@layer base {
+  :root {
+    --bg-main: #F7FBFE;
+    --bg-canvas: rgba(247, 251, 254, 0.9);
+    --bg-card: rgba(255, 255, 255, 0.94);
+    --bg-card-hover: rgba(247, 251, 254, 0.99);
+    --card-border: rgba(169, 221, 245, 0.9);
+    --text-primary: #483878;
+    --text-body: #444444;
+    --body-bg: radial-gradient(circle at 50% 0%, rgba(169, 221, 245, 0.28) 0%, #F7FBFE 50%, #EEF7FC 100%);
+
+    /* Company Brand Palette - درة المنورة DMTC */
+    --brand-orange: #E8742A;       /* أساسي - Primary Brand Orange */
+    --brand-navy: #483878;         /* ثانوي - Secondary Navy */
+    --brand-gold: #F5B13D;         /* مساعد - Gold Highlight */
+    --brand-sky-light: #A9DDF5;    /* مساعد - Light Blue Tint */
+    --brand-sky: #4A9FD8;          /* مساعد - Accent Blue */
+
+    /* Strictly Separated Status Colors */
+    --status-ok: #22A06B;          /* في الموعد */
+    --status-warn: #E5A100;        /* تأخر بسيط / تحذير */
+    --status-critical: #D92D20;    /* تأخر كبير / حرج */
+    --status-info: #2E7CF6;        /* معلومة */
+  }
+
+  .dark {
+    --bg-main: #0B1120;
+    --bg-canvas: rgba(11, 17, 32, 0.94);
+    --bg-card: rgba(19, 28, 49, 0.94);
+    --bg-card-hover: rgba(26, 38, 66, 0.98);
+    --card-border: rgba(74, 159, 216, 0.25);
+    --text-primary: #F1F5F9;
+    --text-body: #CBD5E1;
+    --body-bg: radial-gradient(circle at 50% 0%, rgba(72, 56, 120, 0.22) 0%, #0B1120 55%, #090E1A 100%);
+  }
+
+  * {
+    font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+
+  body {
+    background: var(--body-bg);
+    background-color: var(--bg-main);
+    color: var(--text-body);
+    font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(169, 221, 245, 0.16);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(74, 159, 216, 0.5);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #483878;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #4A9FD8;
+}
+
+/* Company Brand Gradients */
+.gradient-brand-primary {
+  background: linear-gradient(135deg, #E8742A 0%, #F5B13D 100%);
+}
+
+.gradient-brand-navy {
+  background: linear-gradient(135deg, #483878 0%, #4A9FD8 100%);
+}
+
+.gradient-brand-sky {
+  background: linear-gradient(135deg, #4A9FD8 0%, #A9DDF5 100%);
+}
+
+.gradient-brand-ribbon {
+  background: linear-gradient(90deg, #483878 0%, #4A9FD8 35%, #A9DDF5 58%, #F5B13D 80%, #E8742A 100%);
+}
+
+/* Status Gradients (Strictly separated from brand colors) */
+.gradient-status-ok {
+  background: linear-gradient(135deg, #22A06B 0%, #1B8759 100%);
+}
+
+.gradient-status-critical {
+  background: linear-gradient(135deg, #D92D20 0%, #B42318 100%);
+}
+
+/* Road highway dashed markings */
+.road-marking {
+  background-image: repeating-linear-gradient(
+    90deg,
+    #94A3B8,
+    #94A3B8 16px,
+    transparent 16px,
+    transparent 28px
+  );
+}
+
+/* Brand Light/Dark Adaptive Card Base */
+.card-white {
+  background-color: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 2px 10px -2px rgba(72, 56, 120, 0.06), 0 1px 3px -1px rgba(68, 68, 68, 0.04);
+}
+
+.dark .card-white {
+  box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.45);
+}
+
+.card-white-hover {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-white-hover:hover {
+  background-color: var(--bg-card-hover);
+  border-color: #4A9FD8;
+  box-shadow: 0 8px 24px -2px rgba(74, 159, 216, 0.14), 0 3px 6px -2px rgba(72, 56, 120, 0.05);
+  transform: translateY(-1px);
+}
+
+/* Subtle pulsing animation for active KPI cards using Brand Blue -> Navy */
+@keyframes subtle-kpi-pulse {
+  0%, 100% {
+    box-shadow: 0 4px 16px -3px rgba(72, 56, 120, 0.06), 0 0 0 0 rgba(74, 159, 216, 0);
+    border-color: rgba(169, 221, 245, 0.95);
+  }
+  50% {
+    box-shadow: 0 10px 26px -2px rgba(74, 159, 216, 0.18), 0 0 0 3px rgba(169, 221, 245, 0.45);
+    border-color: #4A9FD8;
+  }
+}
+
+.card-white-pulse-active {
+  animation: subtle-kpi-pulse 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Pure RED pulse for Delayed Trips KPI card when count > 0 (no orange) */
+@keyframes subtle-delayed-pulse {
+  0%, 100% {
+    box-shadow: 0 6px 20px -4px rgba(217, 45, 32, 0.2), 0 0 0 0 rgba(217, 45, 32, 0.22);
+    border-color: rgba(217, 45, 32, 0.75);
+  }
+  50% {
+    box-shadow: 0 10px 28px -2px rgba(217, 45, 32, 0.3), 0 0 0 4px rgba(217, 45, 32, 0.14);
+    border-color: #D92D20;
+  }
+}
+
+.card-delayed-pulse {
+  animation: subtle-delayed-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes subtle-dot-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(1.25);
+  }
+}
+
+.dot-pulse-live {
+  animation: subtle-dot-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-white-pulse-active,
+  .card-delayed-pulse,
+  .dot-pulse-live {
+    animation: none;
+  }
+}

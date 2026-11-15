@@ -1,0 +1,217 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User profile with role-based access control and in-app account activation status",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address",
+          "maxLength": 256
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User full name or display title",
+          "maxLength": 128
+        },
+        "role": {
+          "type": "string",
+          "description": "Assigned operational role",
+          "enum": ["general_manager", "operations_manager", "supervisor", "operator"],
+          "maxLength": 32
+        },
+        "roleTitle": {
+          "type": "string",
+          "description": "Arabic role title (e.g. مدير عام)",
+          "maxLength": 64
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Whether the user account is activated and allowed to access the dashboard"
+        },
+        "activationCode": {
+          "type": "string",
+          "description": "Optional activation code generated for activating the account within the site",
+          "maxLength": 32
+        },
+        "activatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the account was activated",
+          "maxLength": 64
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "UID of the General Manager who created this account",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of account creation",
+          "maxLength": 64
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update",
+          "maxLength": 64
+        }
+      },
+      "required": ["userId", "email", "displayName", "role", "roleTitle", "isActive", "createdAt", "updatedAt"]
+    },
+    "trips": {
+      "title": "Trip",
+      "description": "Operating bus trip records",
+      "type": "object",
+      "properties": {
+        "tripId": {
+          "type": "string",
+          "description": "Unique trip identifier",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "busId": {
+          "type": "string",
+          "description": "Bus license/ID number",
+          "maxLength": 32
+        },
+        "driverName": {
+          "type": "string",
+          "description": "Driver name",
+          "maxLength": 128
+        },
+        "origin": {
+          "type": "string",
+          "description": "Departure station",
+          "maxLength": 128
+        },
+        "destination": {
+          "type": "string",
+          "description": "Arrival station",
+          "maxLength": 128
+        },
+        "status": {
+          "type": "string",
+          "description": "Trip current status",
+          "maxLength": 64
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp",
+          "maxLength": 64
+        }
+      },
+      "required": ["tripId", "busId"]
+    },
+    "schedule_archives": {
+      "title": "ScheduleArchive",
+      "description": "Archived trip schedules saved from the Trip Schedule tab for cross-session retrieval and reporting",
+      "type": "object",
+      "properties": {
+        "archiveId": {
+          "type": "string",
+          "description": "Unique archive document ID",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Schedule archive title",
+          "maxLength": 160
+        },
+        "scheduleDate": {
+          "type": "string",
+          "description": "Operational date string (YYYY-MM-DD)",
+          "maxLength": 32
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional operational notes",
+          "maxLength": 500
+        },
+        "visibility": {
+          "type": "string",
+          "description": "Sharing scope for authorized team members",
+          "enum": ["team"],
+          "maxLength": 16
+        },
+        "totalTrips": {
+          "type": "integer",
+          "description": "Total number of trips in the archived schedule"
+        },
+        "totalBuses": {
+          "type": "integer",
+          "description": "Unique buses count in the archived schedule"
+        },
+        "completedTrips": {
+          "type": "integer",
+          "description": "Number of completed trips at archive time"
+        },
+        "trips": {
+          "type": "array",
+          "description": "Native list of trip record maps in this schedule"
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "UID of the user who archived the schedule",
+          "maxLength": 128
+        },
+        "createdByName": {
+          "type": "string",
+          "description": "Display name of the user who archived the schedule",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of archive creation",
+          "maxLength": 64
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last archive update",
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "archiveId",
+        "title",
+        "scheduleDate",
+        "visibility",
+        "totalTrips",
+        "totalBuses",
+        "completedTrips",
+        "trips",
+        "createdBy",
+        "createdByName",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "Collection of user accounts, permissions, and activation states managed by the General Manager"
+    },
+    "/trips/{tripId}": {
+      "schema": "trips",
+      "description": "Collection of bus trip schedule records"
+    },
+    "/schedule_archives/{archiveId}": {
+      "schema": "schedule_archives",
+      "description": "Collection of archived trip schedules saved from the Trip Schedule tab"
+    }
+  }
+}
