@@ -212,11 +212,11 @@ export function detectConflictsAndGenerateAlerts(
       });
     }
 
-    // Scheduled arrival time exceeded without confirmed operational arrival (skip elapsed trips from Excel import)
+    // Only alert if trip was explicitly marked started without completion past arrival time
     if (
       currentMs > arrMs &&
+      trip.actualStatus === 'started' &&
       !trip.actualArrivalTime &&
-      trip.actualStatus !== 'completed' &&
       !trip.isElapsedAtImport
     ) {
       const exceededMin = Math.round((currentMs - arrMs) / 60000);

@@ -198,6 +198,58 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "active_schedules": {
+      "title": "ActiveSchedule",
+      "description": "Current live operational trip schedule synced across refreshes and team sessions",
+      "type": "object",
+      "properties": {
+        "scheduleId": {
+          "type": "string",
+          "description": "Active schedule document ID (team_active)",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "dataSource": {
+          "type": "string",
+          "description": "Origin of current trips (scheduled or demo)",
+          "enum": ["scheduled", "demo"],
+          "maxLength": 32
+        },
+        "totalTrips": {
+          "type": "integer",
+          "description": "Count of currently active trips"
+        },
+        "trips": {
+          "type": "array",
+          "description": "Native list of serialized active trip maps"
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "UID of the user who last updated the live schedule",
+          "maxLength": 128
+        },
+        "updatedByName": {
+          "type": "string",
+          "description": "Display name of the user who last updated the live schedule",
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update",
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "scheduleId",
+        "dataSource",
+        "totalTrips",
+        "trips",
+        "updatedBy",
+        "updatedByName",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -212,6 +264,10 @@
     "/schedule_archives/{archiveId}": {
       "schema": "schedule_archives",
       "description": "Collection of archived trip schedules saved from the Trip Schedule tab"
+    },
+    "/active_schedules/{scheduleId}": {
+      "schema": "active_schedules",
+      "description": "Live operational schedule snapshot persisted for cross-refresh and team synchronization"
     }
   }
 }

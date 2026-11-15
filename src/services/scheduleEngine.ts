@@ -33,12 +33,12 @@ export function computeTripRuntimeState(trip: Trip, currentTime: Date): Trip {
 
   if (trip.actualStatus === 'cancelled') {
     status = 'cancelled';
+  } else if (trip.actualStatus === 'completed' || (currentMs >= arrMs && Boolean(trip.actualArrivalTime))) {
+    status = 'completed_actual';
   } else if (trip.conflicts && trip.conflicts.length > 0) {
     status = 'conflict';
-  } else if (trip.actualStatus === 'delayed') {
+  } else if (trip.actualStatus === 'delayed' || (trip.delayMinutes && trip.delayMinutes > 0)) {
     status = 'delayed_confirmed';
-  } else if (trip.actualStatus === 'completed') {
-    status = 'completed_actual';
   } else if (trip.actualStatus === 'started') {
     status = 'started_actual';
   } else if (currentMs < depMs) {
@@ -46,15 +46,8 @@ export function computeTripRuntimeState(trip: Trip, currentTime: Date): Trip {
   } else if (currentMs >= depMs && currentMs < arrMs) {
     status = 'in_progress_scheduled';
   } else {
-    // Current time is past scheduled arrival time
-    if (trip.actualArrivalTime) {
-      status = 'completed_actual';
-    } else if (trip.isElapsedAtImport) {
-      // Elapsed trip at Excel import time is treated as completed/finished rather than delayed
-      status = 'completed_scheduled';
-    } else {
-      status = 'needs_confirmation';
-    }
+    // Current time is past scheduled arrival time without recorded delay -> finished
+    status = 'completed_scheduled';
   }
 
   return {
@@ -70,7 +63,10 @@ export function computeAllTripsRuntime(trips: Trip[], currentTime: Date): Trip[]
   return trips.map(trip => computeTripRuntimeState(trip, currentTime));
 }
 
-export function calculateFleetKPIs(trips: Trip[]): ScheduleKPIs {
+export function calculateFleetKPIs(
+  activeTrips: Trip[],
+  archivedTodayTrips: Trip[] = []
+): ScheduleKPIs {
   const uniqueBuses = new Set<string>();
   const uniqueDrivers = new Set<string>();
   let inProgress = 0;
@@ -81,7 +77,7 @@ export function calculateFleetKPIs(trips: Trip[]): ScheduleKPIs {
   let conflictCount = 0;
   let totalPassengers = 0;
 
-  for (const t of trips) {
+  for (const t of activeTrips) {
     if (t.busId) uniqueBuses.add(t.busId);
     if (t.driverName) uniqueDrivers.add(t.driverName);
     if (t.passengerCount) totalPassengers += t.passengerCount;
@@ -103,8 +99,15 @@ export function calculateFleetKPIs(trips: Trip[]): ScheduleKPIs {
     }
   }
 
+  for (const t of archivedTodayTrips) {
+    if (t.busId) uniqueBuses.add(t.busId);
+    if (t.driverName) uniqueDrivers.add(t.driverName);
+    if (t.passengerCount) totalPassengers += t.passengerCount;
+    completed++;
+  }
+
   return {
-    totalTrips: trips.length,
+    totalTrips: activeTrips.length + archivedTodayTrips.length,
     inProgressTrips: inProgress,
     upcomingTrips: upcoming,
     completedTrips: completed,

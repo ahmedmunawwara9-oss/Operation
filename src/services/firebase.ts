@@ -14,6 +14,7 @@ import {
   getFirestore,
   doc,
   getDoc,
+  getDocFromServer,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -25,7 +26,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { Trip, ScheduleArchive } from '../types';
+import { Trip, ScheduleArchive, DataSourceType } from '../types';
 
 // Bootstrapped General Manager email from runtime
 export const BOOTSTRAPPED_GM_EMAIL = 'ahmedmunawwara9@gmail.com';
@@ -752,10 +753,447 @@ export async function saveScheduleToArchive(params: {
  * Deletes an archived trip schedule from Firestore
  */
 export async function deleteScheduleArchive(archiveId: string): Promise<void> {
+  if (archiveId.startsWith('local_auto_')) {
+    deleteLocalAutoArchive(archiveId);
+    return;
+  }
   const archivePath = `schedule_archives/${archiveId}`;
   try {
     await deleteDoc(doc(db, 'schedule_archives', archiveId));
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, archivePath);
   }
+}
+
+const LOCAL_AUTO_ARCHIVES_KEY = 'dmtc_local_auto_archives_v1';
+
+function getAutoArchiveTripKey(trip: Partial<Trip>): string {
+  const num = String(trip.tripNumber || '').trim().toUpperCase();
+  const date = String(trip.tripDate || '').trim();
+  const dep = String(trip.departureTime || '').trim();
+  const bus = String(trip.busId || '').trim();
+  return `${num}|${date}|${dep}|${bus}`;
+}
+
+function mergeArchivedTripLists(existingTrips: Trip[], incomingTrips: Trip[]): Trip[] {
+  const merged: Trip[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const t of existingTrips) {
+    const key = getAutoArchiveTripKey(t);
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      merged.push(t);
+    }
+  }
+
+  for (const t of incomingTrips) {
+    const normalized: Trip = {
+      ...t,
+      status: t.status === 'completed_actual' ? 'completed_actual' : 'completed_scheduled',
+      progress: 1,
+      remainingMinutes: 0,
+      conflicts: [],
+    };
+    const key = getAutoArchiveTripKey(normalized);
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      merged.push(normalized);
+    }
+  }
+
+  return merged;
+}
+
+export function loadLocalAutoArchives(): ScheduleArchive[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_AUTO_ARCHIVES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as ScheduleArchive[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function deleteLocalAutoArchive(archiveId: string): void {
+  try {
+    const current = loadLocalAutoArchives();
+    const filtered = current.filter((a) => a.archiveId !== archiveId);
+    localStorage.setItem(LOCAL_AUTO_ARCHIVES_KEY, JSON.stringify(filtered));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function saveToLocalAutoArchive(params: {
+  scheduleDate: string;
+  trips: Trip[];
+  createdByName: string;
+  createdByUid?: string;
+}): ScheduleArchive {
+  const existingList = loadLocalAutoArchives();
+  const cleanDate = params.scheduleDate.trim();
+  const archiveId = `local_auto_${cleanDate.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const nowIso = new Date().toISOString();
+
+  const existingIdx = existingList.findIndex((a) => a.archiveId === archiveId);
+  const previousTrips = existingIdx >= 0 ? existingList[existingIdx].trips : [];
+  const mergedTrips = mergeArchivedTripLists(previousTrips, params.trips);
+  const uniqueBuses = new Set(mergedTrips.map((t) => t.busId).filter(Boolean)).size;
+
+  const updatedArchive: ScheduleArchive = {
+    archiveId,
+    title: `أرشيف الرحلات المنتهية تلقائياً - ${cleanDate}`,
+    scheduleDate: cleanDate,
+    notes: 'أرشفة تلقائية للرحلات المنتهية خلال اليوم (12:00 ص – 00:00 ليلاً)',
+    visibility: 'team',
+    totalTrips: mergedTrips.length,
+    totalBuses: uniqueBuses,
+    completedTrips: mergedTrips.length,
+    trips: mergedTrips,
+    createdBy: params.createdByUid || 'local',
+    createdByName: params.createdByName || 'النظام الآلي',
+    createdAt: existingIdx >= 0 ? existingList[existingIdx].createdAt : nowIso,
+    updatedAt: nowIso,
+  };
+
+  if (existingIdx >= 0) {
+    existingList[existingIdx] = updatedArchive;
+  } else {
+    existingList.unshift(updatedArchive);
+  }
+
+  try {
+    localStorage.setItem(LOCAL_AUTO_ARCHIVES_KEY, JSON.stringify(existingList));
+  } catch {
+    // ignore storage quota errors
+  }
+
+  return updatedArchive;
+}
+
+/**
+ * Automatically archives finished trips into a daily archive document in Firestore
+ * (with automatic deduplication and local fallback if offline or permission-restricted).
+ */
+export async function archiveFinishedTripsAuto(params: {
+  scheduleDate: string;
+  trips: Trip[];
+  createdByName: string;
+}): Promise<{ archive: ScheduleArchive; storedInCloud: boolean }> {
+  const cleanDate = params.scheduleDate.trim().slice(0, 32);
+  const cleanCreatorName = (params.createdByName || 'مستخدم النظام').trim().slice(0, 128);
+  const uid = auth.currentUser?.uid;
+
+  if (!uid || !cleanDate || params.trips.length === 0) {
+    const localArchive = saveToLocalAutoArchive({
+      scheduleDate: cleanDate,
+      trips: params.trips,
+      createdByName: cleanCreatorName,
+      createdByUid: uid,
+    });
+    return { archive: localArchive, storedInCloud: false };
+  }
+
+  const safeDate = cleanDate.replace(/[^a-zA-Z0-9_-]/g, '');
+  const safeUid = uid.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'user';
+  const archiveId = `auto_${safeDate}_${safeUid}`;
+  const docRef = doc(db, 'schedule_archives', archiveId);
+  const title = `أرشيف الرحلات المنتهية تلقائياً - ${cleanDate}`.slice(0, 160);
+  const notes = 'أرشفة تلقائية للرحلات المنتهية خلال اليوم (12:00 ص – 00:00 ليلاً)';
+
+  try {
+    const existingSnap = await getDoc(docRef);
+    const incomingFinished = mergeArchivedTripLists([], params.trips);
+
+    if (existingSnap.exists()) {
+      const existingData = existingSnap.data();
+      const existingTrips = Array.isArray(existingData.trips)
+        ? (existingData.trips as Trip[])
+        : [];
+      const mergedTrips = mergeArchivedTripLists(existingTrips, incomingFinished);
+
+      if (mergedTrips.length <= 500) {
+        const serializedTrips = mergedTrips.map(serializeTripForArchive);
+        const uniqueBuses = new Set(mergedTrips.map((t) => t.busId).filter(Boolean)).size;
+
+        try {
+          await updateDoc(docRef, {
+            title,
+            notes,
+            scheduleDate: cleanDate,
+            trips: serializedTrips,
+            totalTrips: serializedTrips.length,
+            totalBuses: uniqueBuses,
+            completedTrips: serializedTrips.length,
+            updatedAt: serverTimestamp(),
+          });
+
+          const nowIso = new Date().toISOString();
+          return {
+            archive: {
+              archiveId,
+              title,
+              scheduleDate: cleanDate,
+              notes,
+              visibility: 'team',
+              totalTrips: serializedTrips.length,
+              totalBuses: uniqueBuses,
+              completedTrips: serializedTrips.length,
+              trips: mergedTrips,
+              createdBy: uid,
+              createdByName: cleanCreatorName,
+              createdAt: formatFirestoreDate(existingData.createdAt) || nowIso,
+              updatedAt: nowIso,
+            },
+            storedInCloud: true,
+          };
+        } catch (updateErr) {
+          console.warn('Auto-archive updateDoc fallback to new document:', updateErr);
+        }
+      }
+
+      // Overflow (>500) or update rule fallback: create a new cloud archive batch for the newly finished trips
+      const batchArchive = await saveScheduleToArchive({
+        title: `${title} (${incomingFinished.length})`,
+        scheduleDate: cleanDate,
+        notes,
+        trips: incomingFinished.slice(0, 500),
+        createdByName: cleanCreatorName,
+      });
+      return { archive: batchArchive, storedInCloud: true };
+    }
+
+    // Create the initial daily auto-archive document
+    const initialTrips = incomingFinished.slice(0, 500);
+    const serializedTrips = initialTrips.map(serializeTripForArchive);
+    const uniqueBuses = new Set(initialTrips.map((t) => t.busId).filter(Boolean)).size;
+
+    await setDoc(docRef, {
+      archiveId,
+      title,
+      scheduleDate: cleanDate,
+      notes,
+      visibility: 'team',
+      totalTrips: serializedTrips.length,
+      totalBuses: uniqueBuses,
+      completedTrips: serializedTrips.length,
+      trips: serializedTrips,
+      createdBy: uid,
+      createdByName: cleanCreatorName,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    const nowIso = new Date().toISOString();
+    return {
+      archive: {
+        archiveId,
+        title,
+        scheduleDate: cleanDate,
+        notes,
+        visibility: 'team',
+        totalTrips: serializedTrips.length,
+        totalBuses: uniqueBuses,
+        completedTrips: serializedTrips.length,
+        trips: initialTrips,
+        createdBy: uid,
+        createdByName: cleanCreatorName,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+      storedInCloud: true,
+    };
+  } catch (err) {
+    console.warn('Cloud auto-archive unavailable, saving locally:', err);
+    const localArchive = saveToLocalAutoArchive({
+      scheduleDate: cleanDate,
+      trips: params.trips,
+      createdByName: cleanCreatorName,
+      createdByUid: uid,
+    });
+    return { archive: localArchive, storedInCloud: false };
+  }
+}
+
+export const ACTIVE_SCHEDULE_DOC_ID = 'team_active';
+
+/**
+ * Persists the current live operational schedule to Firestore so it survives
+ * page reloads, browser restarts, and stays synced across team sessions.
+ */
+export async function saveActiveScheduleToCloud(params: {
+  trips: Trip[];
+  dataSource: DataSourceType;
+  updatedByName: string;
+}): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  const schedulePath = `active_schedules/${ACTIVE_SCHEDULE_DOC_ID}`;
+  const serializedTrips = params.trips.slice(0, 500).map(serializeTripForArchive);
+  if (params.trips.length > 500) {
+    console.warn('Active schedule exceeded 500 trips; cloud sync capped at 500 trips.');
+  }
+
+  const payload = {
+    scheduleId: ACTIVE_SCHEDULE_DOC_ID,
+    dataSource: params.dataSource === 'demo' ? 'demo' : 'scheduled',
+    totalTrips: serializedTrips.length,
+    trips: serializedTrips,
+    updatedBy: uid,
+    updatedByName: (params.updatedByName || 'مستخدم النظام').trim().slice(0, 128) || 'مستخدم النظام',
+    updatedAt: serverTimestamp(),
+  };
+
+  try {
+    await setDoc(doc(db, 'active_schedules', ACTIVE_SCHEDULE_DOC_ID), payload);
+  } catch (err) {
+    try {
+      handleFirestoreError(err, OperationType.WRITE, schedulePath);
+    } catch (wrapped) {
+      console.warn('Active schedule cloud sync warning:', wrapped);
+    }
+  }
+}
+
+export interface CloudActiveSchedule {
+  trips: Trip[];
+  dataSource: DataSourceType;
+  updatedAtMs: number;
+  updatedBy: string;
+  updatedByName: string;
+  fromCache: boolean;
+}
+
+function parseFirestoreTimestampMs(rawUpdated: unknown): number {
+  if (rawUpdated instanceof Timestamp) {
+    return rawUpdated.toMillis();
+  }
+  if (
+    rawUpdated &&
+    typeof rawUpdated === 'object' &&
+    'toMillis' in rawUpdated &&
+    typeof (rawUpdated as { toMillis: () => number }).toMillis === 'function'
+  ) {
+    return (rawUpdated as { toMillis: () => number }).toMillis();
+  }
+  if (typeof rawUpdated === 'string') {
+    return Date.parse(rawUpdated) || 0;
+  }
+  return 0;
+}
+
+function mapCloudScheduleSnapshot(
+  d: Record<string, unknown>,
+  fromCache: boolean
+): CloudActiveSchedule {
+  return {
+    trips: Array.isArray(d.trips) ? (d.trips as Trip[]) : [],
+    dataSource: d.dataSource === 'demo' ? 'demo' : 'scheduled',
+    updatedAtMs: parseFirestoreTimestampMs(d.updatedAt),
+    updatedBy: typeof d.updatedBy === 'string' ? d.updatedBy : '',
+    updatedByName: typeof d.updatedByName === 'string' ? d.updatedByName : 'مستخدم النظام',
+    fromCache,
+  };
+}
+
+/**
+ * Fetches the authoritative cloud active schedule from Firestore server on startup
+ * for timestamp comparison against local IndexedDB / localStorage copies.
+ */
+export async function fetchCloudActiveSchedule(): Promise<CloudActiveSchedule | null> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return null;
+
+  const docRef = doc(db, 'active_schedules', ACTIVE_SCHEDULE_DOC_ID);
+  try {
+    const serverSnap = await getDocFromServer(docRef);
+    if (!serverSnap.exists()) return null;
+    return mapCloudScheduleSnapshot(serverSnap.data() as Record<string, unknown>, false);
+  } catch (serverErr) {
+    try {
+      const fallbackSnap = await getDoc(docRef);
+      if (!fallbackSnap.exists()) return null;
+      return mapCloudScheduleSnapshot(
+        fallbackSnap.data() as Record<string, unknown>,
+        fallbackSnap.metadata.fromCache
+      );
+    } catch (err) {
+      console.warn('Could not fetch cloud active schedule:', serverErr, err);
+      return null;
+    }
+  }
+}
+
+/**
+ * Subscribes to the live operational schedule in Firestore.
+ */
+export function subscribeToActiveSchedule(
+  onSchedule: (data: CloudActiveSchedule | null) => void,
+  onError?: (err: Error) => void
+): () => void {
+  const schedulePath = `active_schedules/${ACTIVE_SCHEDULE_DOC_ID}`;
+  return onSnapshot(
+    doc(db, 'active_schedules', ACTIVE_SCHEDULE_DOC_ID),
+    (snapshot) => {
+      if (snapshot.metadata.hasPendingWrites) return;
+      if (!snapshot.exists()) {
+        onSchedule(null);
+        return;
+      }
+
+      onSchedule(
+        mapCloudScheduleSnapshot(
+          snapshot.data() as Record<string, unknown>,
+          snapshot.metadata.fromCache
+        )
+      );
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.GET, schedulePath);
+      } catch (wrapped) {
+        if (onError) {
+          onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+        }
+      }
+    }
+  );
+}
+
+/**
+ * Loads today's auto-archived completed trips from Firestore + local fallback
+ * so daily KPIs stay accurate after reopening the page on a fresh session.
+ */
+export async function fetchTodayAutoArchivedTrips(scheduleDate: string): Promise<Trip[]> {
+  const cleanDate = scheduleDate.trim().slice(0, 32);
+  if (!cleanDate) return [];
+
+  const localMatches = loadLocalAutoArchives()
+    .filter((a) => a.scheduleDate === cleanDate)
+    .flatMap((a) => a.trips || []);
+
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    return mergeArchivedTripLists([], localMatches);
+  }
+
+  const safeDate = cleanDate.replace(/[^a-zA-Z0-9_-]/g, '');
+  const safeUid = uid.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'user';
+  const archiveId = `auto_${safeDate}_${safeUid}`;
+
+  try {
+    const snap = await getDoc(doc(db, 'schedule_archives', archiveId));
+    if (snap.exists()) {
+      const data = snap.data();
+      const cloudTrips = Array.isArray(data.trips) ? (data.trips as Trip[]) : [];
+      return mergeArchivedTripLists(cloudTrips, localMatches);
+    }
+  } catch (err) {
+    console.warn('Could not fetch today auto-archive from cloud:', err);
+  }
+
+  return mergeArchivedTripLists([], localMatches);
 }

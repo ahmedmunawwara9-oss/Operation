@@ -16,6 +16,7 @@ import {
   AppUser,
   subscribeToScheduleArchives,
   saveScheduleToArchive,
+  loadLocalAutoArchives,
 } from '../services/firebase';
 import { ReportExportButtons } from './ReportExportButtons';
 import { ScheduleArchivePanel } from './ScheduleArchivePanel';
@@ -33,6 +34,8 @@ interface DailyTripTimelineProps {
   enableArchive?: boolean;
   currentUser?: AppUser | null;
   onRestoreArchive?: (trips: Trip[]) => void;
+  autoArchiveNotice?: { count: number; timestamp: number } | null;
+  onDismissAutoArchiveNotice?: () => void;
 }
 
 export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
@@ -42,6 +45,8 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
   enableArchive = false,
   currentUser = null,
   onRestoreArchive,
+  autoArchiveNotice = null,
+  onDismissAutoArchiveNotice,
 }) => {
   const [subTab, setSubTab] = useState<'timeline' | 'archive'>('timeline');
   const [ganttMode, setGanttMode] = useState<'bus' | 'route'>('bus');
@@ -59,7 +64,8 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
   }, [hoveredTrip]);
 
   // Archive states
-  const [archives, setArchives] = useState<ScheduleArchive[]>([]);
+  const [cloudArchives, setCloudArchives] = useState<ScheduleArchive[]>([]);
+  const [localArchives, setLocalArchives] = useState<ScheduleArchive[]>(() => loadLocalAutoArchives());
   const [archivesLoading, setArchivesLoading] = useState<boolean>(false);
   const [archivesError, setArchivesError] = useState<string | null>(null);
   const [isSaveFormOpen, setIsSaveFormOpen] = useState<boolean>(false);
@@ -72,11 +78,15 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
   );
 
   useEffect(() => {
+    setLocalArchives(loadLocalAutoArchives());
+  }, [autoArchiveNotice, subTab, trips.length]);
+
+  useEffect(() => {
     if (!enableArchive || !currentUser) return;
     setArchivesLoading(true);
     const unsubscribe = subscribeToScheduleArchives(
       (list) => {
-        setArchives(list);
+        setCloudArchives(list);
         setArchivesLoading(false);
         setArchivesError(null);
       },
@@ -87,6 +97,12 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
     );
     return () => unsubscribe();
   }, [enableArchive, currentUser]);
+
+  const archives = React.useMemo(() => {
+    const merged = [...cloudArchives, ...localArchives];
+    merged.sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
+    return merged;
+  }, [cloudArchives, localArchives]);
 
   const openSaveArchiveForm = () => {
     const defaultDate = trips[0]?.tripDate || getTodayDateString();
@@ -213,11 +229,11 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
               <h2 className="text-base lg:text-lg font-black text-[#483878] dark:text-slate-100 tracking-tight flex items-center gap-2">
                 <span>جدول الرحلات والمخطط الزمني (Gantt)</span>
                 <span className="text-xs font-mono font-bold bg-[#F7FBFE] dark:bg-slate-800 text-[#4A9FD8] dark:text-[#A9DDF5] px-2.5 py-0.5 rounded-full border border-[#A9DDF5] dark:border-slate-700">
-                  24 ساعة
+                  12:00 ص – 00:00 ليلاً
                 </span>
               </h2>
               <p className="text-xs text-[#444444] dark:text-slate-300 mt-0.5">
-                توزيع الرحلات على مدار اليوم مع إمكانية حفظ الجداول واسترجاعها من الأرشيف
+                اليوم التشغيلي يبدأ 12:00 ص (00:00) وينتهي 00:00 ليلاً · تُنقل الرحلات المنتهية تلقائياً إلى الأرشيف
               </p>
             </div>
           </div>
@@ -357,6 +373,40 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
               </button>
             </div>
           </form>
+        )}
+
+        {/* Auto-archive notification banner */}
+        {autoArchiveNotice && autoArchiveNotice.count > 0 && subTab === 'timeline' && (
+          <div className="p-3 rounded-xl border bg-[#22A06B]/10 border-[#22A06B]/35 text-[#22A06B] flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>
+                تم نقل {autoArchiveNotice.count} رحلة منتهية تلقائياً إلى الأرشيف.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSubTab('archive');
+                  onDismissAutoArchiveNotice?.();
+                }}
+                className="px-3 py-1 rounded-lg bg-[#483878] text-white text-xs font-black cursor-pointer"
+              >
+                فتح الأرشيف
+              </button>
+              {onDismissAutoArchiveNotice && (
+                <button
+                  type="button"
+                  onClick={onDismissAutoArchiveNotice}
+                  className="p-1 rounded-lg hover:bg-black/5 cursor-pointer"
+                  aria-label="إغلاق التنبيه"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Save / Restore Feedback Banner */}
@@ -503,6 +553,7 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
             currentUser={currentUser}
             hasActiveTrips={trips.length > 0}
             onRestoreArchive={handleRestoreFromArchive}
+            onArchiveDeleted={() => setLocalArchives(loadLocalAutoArchives())}
             currentTime={currentTime}
           />
         </div>

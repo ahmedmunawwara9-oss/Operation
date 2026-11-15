@@ -57,8 +57,8 @@ export const BottomPanels: React.FC<BottomPanelsProps> = ({
   // If completely empty, show an empty light ring placeholder
   const emptyDonutPlaceholder = [{ name: 'فارغ', value: 1, color: '#E2E8F0' }];
 
-  // 2. Hourly distribution for Bar Chart (06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00)
-  const targetHours = [6, 8, 10, 12, 14, 16, 18, 20, 22];
+  // 2. Hourly distribution for Bar Chart covering full operational day 00:00 (12 AM) to 24:00 (00 night)
+  const targetHours = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
   const barData = targetHours.map((hour) => {
     const label = `${String(hour).padStart(2, '0')}:00`;
     let count = 0;

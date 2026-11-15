@@ -66,7 +66,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   });
   const [previews, setPreviews] = useState<ImportedRowPreview[]>([]);
   const [operationDate, setOperationDate] = useState<string>(() => getTodayDateString());
-  const [afterMidnightNextDay, setAfterMidnightNextDay] = useState<boolean>(true);
+  const [afterMidnightNextDay, setAfterMidnightNextDay] = useState<boolean>(false);
   const [mergeMode, setMergeMode] = useState<MergeTripsMode>('skip');
   const [importSummary, setImportSummary] = useState<Pick<
     MergeTripsResult,
@@ -415,9 +415,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                 <p>تأكد من مطابقة حقول الرحلات الأساسية</p>
               </div>
 
-              {/* Operation Date & After-Midnight Rule */}
+              {/* Operation Date & 00:00-24:00 Day Rule */}
               <div className="p-3.5 rounded-2xl bg-[#F7FBFE] dark:bg-slate-800/70 border border-[#A9DDF5] dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <Calendar className="w-4 h-4 text-[#4A9FD8] shrink-0" />
                   <label htmlFor="excel-operation-date" className="text-xs font-bold text-[#483878] dark:text-slate-100 whitespace-nowrap">
                     تاريخ التشغيل:
@@ -429,6 +429,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     onChange={(e) => setOperationDate(e.target.value)}
                     className="bg-white dark:bg-[#131C31] text-xs font-bold font-mono text-[#483878] dark:text-slate-100 px-3 py-1.5 rounded-xl border border-[#A9DDF5] dark:border-slate-700 outline-none focus:border-[#4A9FD8]"
                   />
+                  <span className="text-xs font-semibold text-[#4A9FD8] dark:text-[#A9DDF5]">
+                    (اليوم: 12:00 ص – 00:00 ليلاً)
+                  </span>
                 </div>
 
                 <label className="flex items-center gap-2 text-xs font-semibold text-[#444444] dark:text-slate-200 cursor-pointer select-none">
@@ -438,7 +441,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     onChange={(e) => setAfterMidnightNextDay(e.target.checked)}
                     className="rounded accent-[#E8742A] cursor-pointer"
                   />
-                  <span>الرحلات بعد منتصف الليل (حتى الساعة 06:00) تتبع اليوم التالي</span>
+                  <span>ترحيل رحلات ما قبل 06:00 ص لليوم التالي</span>
                 </label>
               </div>
 
@@ -495,9 +498,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
           {step === 'preview' && (
             <div className="space-y-4">
-              {/* Operation Date & After-Midnight Controls in Preview */}
+              {/* Operation Date & 00:00-24:00 Controls in Preview */}
               <div className="p-3.5 rounded-2xl bg-[#F7FBFE] dark:bg-slate-800/70 border border-[#A9DDF5] dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <Calendar className="w-4 h-4 text-[#4A9FD8] shrink-0" />
                   <label htmlFor="excel-preview-operation-date" className="text-xs font-bold text-[#483878] dark:text-slate-100 whitespace-nowrap">
                     تاريخ التشغيل:
@@ -509,6 +512,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     onChange={(e) => handleUpdatePreviewDateSettings(e.target.value, afterMidnightNextDay)}
                     className="bg-white dark:bg-[#131C31] text-xs font-bold font-mono text-[#483878] dark:text-slate-100 px-3 py-1.5 rounded-xl border border-[#A9DDF5] dark:border-slate-700 outline-none focus:border-[#4A9FD8]"
                   />
+                  <span className="text-xs font-semibold text-[#4A9FD8] dark:text-[#A9DDF5]">
+                    (اليوم: 12:00 ص – 00:00 ليلاً)
+                  </span>
                 </div>
 
                 <label className="flex items-center gap-2 text-xs font-semibold text-[#444444] dark:text-slate-200 cursor-pointer select-none">
@@ -518,7 +524,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     onChange={(e) => handleUpdatePreviewDateSettings(operationDate, e.target.checked)}
                     className="rounded accent-[#E8742A] cursor-pointer"
                   />
-                  <span>الرحلات بعد منتصف الليل (حتى الساعة 06:00) تتبع اليوم التالي</span>
+                  <span>ترحيل رحلات ما قبل 06:00 ص لليوم التالي</span>
                 </label>
               </div>
 

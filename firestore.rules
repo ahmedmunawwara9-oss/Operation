@@ -109,6 +109,25 @@ service cloud.firestore {
              data.updatedAt is timestamp;
     }
 
+    function isValidActiveSchedule(data) {
+      return data.keys().hasAll([
+               'scheduleId', 'dataSource', 'totalTrips', 'trips',
+               'updatedBy', 'updatedByName', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'scheduleId', 'dataSource', 'totalTrips', 'trips',
+               'updatedBy', 'updatedByName', 'updatedAt'
+             ]) &&
+             isValidId(data.scheduleId) &&
+             data.dataSource in ['scheduled', 'demo'] &&
+             data.totalTrips is int && data.totalTrips >= 0 && data.totalTrips <= 500 &&
+             data.trips is list && data.trips.size() <= 500 &&
+             (data.trips.size() == 0 || data.trips[0] is map) &&
+             data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128 &&
+             data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 128 &&
+             data.updatedAt is timestamp;
+    }
+
     // 4. Users Collection
     match /users/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isGeneralManager());
@@ -193,9 +212,45 @@ service cloud.firestore {
                     incoming().createdAt == existing().createdAt &&
                     incoming().updatedAt == request.time &&
                     (isGeneralManager() || existing().createdBy == request.auth.uid) &&
-                    incoming().diff(existing()).affectedKeys().hasOnly(['title', 'notes', 'scheduleDate', 'updatedAt']);
+                    incoming().diff(existing()).affectedKeys().hasOnly([
+                      'title',
+                      'notes',
+                      'scheduleDate',
+                      'trips',
+                      'totalTrips',
+                      'totalBuses',
+                      'completedTrips',
+                      'updatedAt'
+                    ]);
       allow delete: if isValidId(archiveId) &&
                     (isGeneralManager() || (isAuthorizedUser() && existing().createdBy == request.auth.uid));
+    }
+
+    // 7. Live Active Schedules Collection
+    match /active_schedules/{scheduleId} {
+      allow get: if isValidId(scheduleId) && isAuthorizedUser();
+      allow list: if false;
+      allow create: if isValidId(scheduleId) &&
+                    isAuthorizedUser() &&
+                    isValidActiveSchedule(incoming()) &&
+                    incoming().scheduleId == scheduleId &&
+                    incoming().updatedBy == request.auth.uid &&
+                    incoming().updatedAt == request.time;
+      allow update: if isValidId(scheduleId) &&
+                    isAuthorizedUser() &&
+                    isValidActiveSchedule(incoming()) &&
+                    incoming().scheduleId == existing().scheduleId &&
+                    incoming().updatedBy == request.auth.uid &&
+                    incoming().updatedAt == request.time &&
+                    incoming().diff(existing()).affectedKeys().hasOnly([
+                      'dataSource',
+                      'totalTrips',
+                      'trips',
+                      'updatedBy',
+                      'updatedByName',
+                      'updatedAt'
+                    ]);
+      allow delete: if isValidId(scheduleId) && isGeneralManager();
     }
   }
 }

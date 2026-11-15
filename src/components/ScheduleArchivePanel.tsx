@@ -27,6 +27,7 @@ interface ScheduleArchivePanelProps {
   currentUser: AppUser | null;
   hasActiveTrips: boolean;
   onRestoreArchive: (archive: ScheduleArchive) => void;
+  onArchiveDeleted?: (archiveId: string) => void;
   currentTime: Date;
 }
 
@@ -37,6 +38,7 @@ export const ScheduleArchivePanel: React.FC<ScheduleArchivePanelProps> = ({
   currentUser,
   hasActiveTrips,
   onRestoreArchive,
+  onArchiveDeleted,
   currentTime,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -67,6 +69,7 @@ export const ScheduleArchivePanel: React.FC<ScheduleArchivePanelProps> = ({
       if (previewArchive?.archiveId === archiveId) {
         setPreviewArchive(null);
       }
+      onArchiveDeleted?.(archiveId);
     } catch (err) {
       setActionError(
         err instanceof Error ? err.message : 'تعذر حذف الجدول من الأرشيف. يرجى المحاولة مجدداً.'
@@ -149,7 +152,10 @@ export const ScheduleArchivePanel: React.FC<ScheduleArchivePanelProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
           {filteredArchives.map((archive) => {
+            const isAutoArchived =
+              archive.archiveId.startsWith('auto_') || archive.archiveId.startsWith('local_auto_');
             const canDelete =
+              archive.archiveId.startsWith('local_auto_') ||
               currentUser?.role === 'general_manager' ||
               (currentUser?.uid && archive.createdBy === currentUser.uid);
             const isDeleting = deletingId === archive.archiveId;
@@ -165,9 +171,16 @@ export const ScheduleArchivePanel: React.FC<ScheduleArchivePanelProps> = ({
                   {/* Card Top Row */}
                   <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-[#A9DDF5]/50 dark:border-slate-700">
                     <div className="min-w-0 flex-1">
-                      <h4 className="text-sm font-black text-[#483878] dark:text-slate-100 truncate" title={archive.title}>
-                        {archive.title}
-                      </h4>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-black text-[#483878] dark:text-slate-100 truncate" title={archive.title}>
+                          {archive.title}
+                        </h4>
+                        {isAutoArchived && (
+                          <span className="px-2 py-0.5 rounded-md bg-[#22A06B]/10 border border-[#22A06B]/30 text-xs font-bold text-[#22A06B] shrink-0">
+                            أرشفة تلقائية
+                          </span>
+                        )}
+                      </div>
                       <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-[#444444] dark:text-slate-300 font-semibold">
                         <span className="flex items-center gap-1 font-mono text-[#483878] dark:text-[#A9DDF5]">
                           <Calendar className="w-3.5 h-3.5 text-[#4A9FD8]" />

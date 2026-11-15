@@ -24,7 +24,7 @@ interface OperationalAnalyticsProps {
 }
 
 export const OperationalAnalytics: React.FC<OperationalAnalyticsProps> = ({ trips }) => {
-  // Trips per hour
+  // Trips per hour covering full 24h operational day (00:00 - 23:59)
   const hourlyData = Array.from({ length: 24 }, (_, hour) => {
     const hourLabel = `${String(hour).padStart(2, '0')}:00`;
     let count = 0;
@@ -36,7 +36,7 @@ export const OperationalAnalytics: React.FC<OperationalAnalyticsProps> = ({ trip
       hour: hourLabel,
       رحلات: count,
     };
-  }).filter((_, i) => i >= 4 && i <= 23);
+  });
 
   // Status distribution
   const statusCounts: Record<string, number> = {

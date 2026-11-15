@@ -171,12 +171,50 @@ export function addDaysToDateString(dateStr: string, days: number): string {
   return `${year}-${month}-${day}`;
 }
 
-export function getTodayDateString(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+export function getOperationalDateString(
+  date: Date = new Date(),
+  timeZone?: string
+): string {
+  if (timeZone) {
+    try {
+      const formatted = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(date);
+      const normalized = normalizeToWesternDigits(formatted).slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+        return normalized;
+      }
+    } catch {
+      // Fallback to local calendar date
+    }
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+export function getOperationalDayBounds(
+  date: Date = new Date(),
+  timeZone?: string
+): {
+  dateStr: string;
+  nextDateStr: string;
+  startOfDayMs: number;
+  endOfDayMs: number;
+} {
+  const dateStr = getOperationalDateString(date, timeZone);
+  const nextDateStr = addDaysToDateString(dateStr, 1);
+  const startOfDayMs = new Date(`${dateStr}T00:00:00`).getTime();
+  const endOfDayMs = new Date(`${nextDateStr}T00:00:00`).getTime();
+  return { dateStr, nextDateStr, startOfDayMs, endOfDayMs };
+}
+
+export function getTodayDateString(timeZone?: string): string {
+  return getOperationalDateString(new Date(), timeZone);
 }
 
 /**
