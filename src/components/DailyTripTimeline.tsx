@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   X,
   Navigation,
+  List,
+  Trash2,
 } from 'lucide-react';
 import { Trip, ScheduleArchive } from '../types';
 import { getTodayDateString } from '../services/dateTimeUtils';
@@ -21,6 +23,7 @@ import {
 import { ReportExportButtons } from './ReportExportButtons';
 import { ScheduleArchivePanel } from './ScheduleArchivePanel';
 import { RouteGanttView } from './RouteGanttView';
+import { TimelineView } from './TimelineView';
 import {
   TripHoverTooltip,
   HoveredTripState,
@@ -34,8 +37,10 @@ interface DailyTripTimelineProps {
   enableArchive?: boolean;
   currentUser?: AppUser | null;
   onRestoreArchive?: (trips: Trip[]) => void;
+  onDeleteCurrentSchedule?: () => void;
   autoArchiveNotice?: { count: number; timestamp: number } | null;
   onDismissAutoArchiveNotice?: () => void;
+  selectedTripId?: string | null;
 }
 
 export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
@@ -45,11 +50,13 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
   enableArchive = false,
   currentUser = null,
   onRestoreArchive,
+  onDeleteCurrentSchedule,
   autoArchiveNotice = null,
   onDismissAutoArchiveNotice,
+  selectedTripId = null,
 }) => {
   const [subTab, setSubTab] = useState<'timeline' | 'archive'>('timeline');
-  const [ganttMode, setGanttMode] = useState<'bus' | 'route'>('bus');
+  const [ganttMode, setGanttMode] = useState<'timeline' | 'bus' | 'route'>('timeline');
   const [busFilter, setBusFilter] = useState<string>('all');
   const [driverFilter, setDriverFilter] = useState<string>('all');
   const [routeFilter, setRouteFilter] = useState<string>('all');
@@ -73,9 +80,21 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
   const [archiveDate, setArchiveDate] = useState<string>('');
   const [archiveNotes, setArchiveNotes] = useState<string>('');
   const [isSavingArchive, setIsSavingArchive] = useState<boolean>(false);
+  const [isConfirmDeleteScheduleOpen, setIsConfirmDeleteScheduleOpen] = useState<boolean>(false);
   const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
   );
+
+  useEffect(() => {
+    if (!isConfirmDeleteScheduleOpen) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsConfirmDeleteScheduleOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isConfirmDeleteScheduleOpen]);
 
   useEffect(() => {
     setLocalArchives(loadLocalAutoArchives());
@@ -148,6 +167,17 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
     setSaveFeedback({
       type: 'success',
       text: `تم تحميل جدول «${archive.title}» إلى الجدول النشط بنجاح.`,
+    });
+  };
+
+  const handleConfirmDeleteCurrentSchedule = () => {
+    if (!onDeleteCurrentSchedule) return;
+    onDeleteCurrentSchedule();
+    setIsConfirmDeleteScheduleOpen(false);
+    setIsSaveFormOpen(false);
+    setSaveFeedback({
+      type: 'success',
+      text: 'تم حذف الجدول الحالي وتفريغ الرحلات النشطة بنجاح.',
     });
   };
 
@@ -227,7 +257,7 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
             </div>
             <div>
               <h2 className="text-base lg:text-lg font-black text-[#483878] dark:text-slate-100 tracking-tight flex items-center gap-2">
-                <span>جدول الرحلات والمخطط الزمني (Gantt)</span>
+                <span>جدول الرحلات والخط الزمني</span>
                 <span className="text-xs font-mono font-bold bg-[#F7FBFE] dark:bg-slate-800 text-[#4A9FD8] dark:text-[#A9DDF5] px-2.5 py-0.5 rounded-full border border-[#A9DDF5] dark:border-slate-700">
                   12:00 ص – 00:00 ليلاً
                 </span>
@@ -278,16 +308,40 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
               </div>
 
               {trips.length > 0 && subTab === 'timeline' && (
-                <button
-                  type="button"
-                  onClick={openSaveArchiveForm}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#E8742A] hover:bg-[#d5651e] text-white text-xs font-black shadow-sm transition-all cursor-pointer active:scale-95"
-                >
-                  <BookmarkPlus className="w-4 h-4" />
-                  <span>حفظ في الأرشيف</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={openSaveArchiveForm}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#E8742A] hover:bg-[#d5651e] text-white text-xs font-black shadow-sm transition-all cursor-pointer active:scale-95"
+                  >
+                    <BookmarkPlus className="w-4 h-4" />
+                    <span>حفظ في الأرشيف</span>
+                  </button>
+
+                  {onDeleteCurrentSchedule && (
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmDeleteScheduleOpen(true)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#D92D20]/10 dark:bg-[#D92D20]/20 hover:bg-[#D92D20]/15 text-[#D92D20] dark:text-red-300 border border-[#D92D20]/35 text-xs font-black transition-all cursor-pointer active:scale-95"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>حذف الجدول الحالي</span>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
+          )}
+
+          {!enableArchive && onDeleteCurrentSchedule && trips.length > 0 && subTab === 'timeline' && (
+            <button
+              type="button"
+              onClick={() => setIsConfirmDeleteScheduleOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#D92D20]/10 dark:bg-[#D92D20]/20 hover:bg-[#D92D20]/15 text-[#D92D20] dark:text-red-300 border border-[#D92D20]/35 text-xs font-black transition-all cursor-pointer active:scale-95"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>حذف الجدول الحالي</span>
+            </button>
           )}
         </div>
 
@@ -450,8 +504,20 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
         {/* Filters Row (shown only in Timeline view) */}
         {subTab === 'timeline' && (
           <div className="flex flex-wrap items-center gap-2 w-full">
-            {/* Group-by Mode Switcher (By Bus vs By Route) */}
-            <div className="flex items-center gap-1 bg-[#F7FBFE] dark:bg-slate-800 p-1 rounded-xl border border-[#A9DDF5] dark:border-slate-700 text-xs font-bold">
+            {/* View Mode Switcher (Timeline vs By Bus Gantt vs By Route Gantt) */}
+            <div className="flex flex-wrap items-center gap-1 bg-[#F7FBFE] dark:bg-slate-800 p-1 rounded-xl border border-[#A9DDF5] dark:border-slate-700 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setGanttMode('timeline')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  ganttMode === 'timeline'
+                    ? 'bg-[#483878] text-white shadow-sm font-black'
+                    : 'text-[#444444] dark:text-slate-300 hover:text-[#483878] dark:hover:text-white'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>الخط الزمني</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setGanttMode('bus')}
@@ -559,36 +625,45 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
         </div>
       ) : (
         <>
-          {/* Legend (Strictly Separated Status Colors) */}
-          <div className="flex flex-wrap items-center gap-4 py-2.5 text-xs text-[#444444] dark:text-slate-300 border-b border-[#A9DDF5]/50 dark:border-slate-700">
-            <span className="font-bold text-[#483878] dark:text-slate-100">دليل الألوان:</span>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-2.5 rounded-sm bg-[#4A9FD8]" />
-              <span>رحلة قادمة</span>
+          {ganttMode !== 'timeline' && (
+            /* Legend (Strictly Separated Status Colors for Gantt views) */
+            <div className="flex flex-wrap items-center gap-4 py-2.5 text-xs text-[#444444] dark:text-slate-300 border-b border-[#A9DDF5]/50 dark:border-slate-700">
+              <span className="font-bold text-[#483878] dark:text-slate-100">دليل الألوان:</span>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-2.5 rounded-sm bg-[#4A9FD8]" />
+                <span>رحلة قادمة</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-2.5 rounded-sm bg-[#2E7CF6]" />
+                <span>جاري التنفيذ (متحركة)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-2.5 rounded-sm bg-[#22A06B]" />
+                <span>مكتملة / منتهية</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-2.5 rounded-sm bg-[#E5A100]" />
+                <span>تجاوز الموعد (تحذير)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-2.5 rounded-sm bg-[#D92D20]" />
+                <span>تعارض أو تأخير حرج</span>
+              </div>
+              <div className="flex items-center gap-1.5 ml-auto">
+                <span className="w-2 h-2 rounded-full bg-[#D92D20] animate-ping" />
+                <span className="text-[#D92D20] font-bold">الخط الأحمر = الوقت الحالي</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-2.5 rounded-sm bg-[#2E7CF6]" />
-              <span>جاري التنفيذ (متحركة)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-2.5 rounded-sm bg-[#22A06B]" />
-              <span>مكتملة / منتهية</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-2.5 rounded-sm bg-[#E5A100]" />
-              <span>تجاوز الموعد (تحذير)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-2.5 rounded-sm bg-[#D92D20]" />
-              <span>تعارض أو تأخير حرج</span>
-            </div>
-            <div className="flex items-center gap-1.5 ml-auto">
-              <span className="w-2 h-2 rounded-full bg-[#D92D20] animate-ping" />
-              <span className="text-[#D92D20] font-bold">الخط الأحمر = الوقت الحالي</span>
-            </div>
-          </div>
+          )}
 
-      {ganttMode === 'route' ? (
+      {ganttMode === 'timeline' ? (
+        <TimelineView
+          trips={filteredTrips}
+          currentTime={currentTime}
+          selectedTripId={selectedTripId}
+          onSelectTrip={onSelectTrip}
+        />
+      ) : ganttMode === 'route' ? (
         <RouteGanttView
           trips={filteredTrips}
           currentTime={currentTime}
@@ -718,6 +793,77 @@ export const DailyTripTimeline: React.FC<DailyTripTimelineProps> = ({
       )}
 
       <TripHoverTooltip hovered={hoveredTrip} />
+
+      {/* Delete Current Schedule Confirmation Modal */}
+      {isConfirmDeleteScheduleOpen && onDeleteCurrentSchedule && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-[#483878]/45 dark:bg-slate-950/75 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-delete-schedule-title"
+        >
+          <div
+            className="fixed inset-0"
+            onClick={() => setIsConfirmDeleteScheduleOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-md bg-white dark:bg-[#131C31] border border-[#A9DDF5] dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden text-[#444444] dark:text-slate-200">
+            <div className="p-5 border-b border-[#A9DDF5]/60 dark:border-slate-700 bg-[#F7FBFE] dark:bg-slate-900/60 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#D92D20]/15 text-[#D92D20] border border-[#D92D20]/30 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3
+                    id="confirm-delete-schedule-title"
+                    className="text-base font-black text-[#483878] dark:text-white"
+                  >
+                    تأكيد حذف الجدول الحالي
+                  </h3>
+                  <p className="text-xs text-[#444444] dark:text-slate-300 font-medium">
+                    إجراء تشغيلي حساس
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsConfirmDeleteScheduleOpen(false)}
+                className="p-2 rounded-xl text-[#444444] dark:text-slate-300 hover:text-[#483878] dark:hover:text-white hover:bg-[#EEF7FC] dark:hover:bg-slate-800 cursor-pointer"
+                aria-label="إغلاق نافذة التأكيد"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3 text-xs leading-relaxed">
+              <p className="font-bold text-[#483878] dark:text-slate-100 text-sm">
+                هل أنت متأكد من حذف الجدول الحالي بالكامل ({trips.length} رحلة)؟
+              </p>
+              <div className="p-3 rounded-xl bg-[#D92D20]/[0.06] dark:bg-[#D92D20]/15 border border-[#D92D20]/30 text-[#D92D20] dark:text-red-300 font-semibold space-y-1">
+                <p>• سيتم تفريغ جميع الرحلات النشطة من الجدول الحالي ومن المزامنة السحابية.</p>
+                <p>• الجداول المحفوظة مسبقاً في تبويب «الأرشيف» لن تتأثر وستبقى متاحة.</p>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-[#A9DDF5]/60 dark:border-slate-700 bg-[#F7FBFE] dark:bg-slate-900/60 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsConfirmDeleteScheduleOpen(false)}
+                className="px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-[#A9DDF5] dark:border-slate-700 text-xs font-bold text-[#444444] dark:text-slate-200 hover:border-[#4A9FD8] cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteCurrentSchedule}
+                className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-[#D92D20] hover:bg-[#b82218] text-white text-xs font-black shadow-sm cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>تأكيد الحذف</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

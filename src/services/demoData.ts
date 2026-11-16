@@ -36,6 +36,8 @@ export function generateDemoTrips(baseDateStr?: string, referenceTime?: Date): T
       destination: 'جدة - محطة المطار الدولية',
       depTime: timeOffset(-1, -15), // started 75 min ago
       arrTime: timeOffset(2, 45),   // finishes in 2h 45m
+      actualDepartureTime: timeOffset(-1, -15),
+      actualStatus: 'started' as const,
       route: 'طريق الرياض - مكة السريع',
       passengerCount: 46,
       notes: 'رحلة كبار الشخصيات VIP مع خدمة إنترنت',
@@ -50,6 +52,8 @@ export function generateDemoTrips(baseDateStr?: string, referenceTime?: Date): T
       destination: 'الرياض - محطة النقل المركزية',
       depTime: timeOffset(-0, -40), // started 40 min ago
       arrTime: timeOffset(2, 20),
+      actualDepartureTime: timeOffset(-0, -40),
+      actualStatus: 'started' as const,
       route: 'طريق الدمام - الرياض السريع',
       passengerCount: 42,
       notes: 'رحلة منتظمة مجدولة',
@@ -64,6 +68,8 @@ export function generateDemoTrips(baseDateStr?: string, referenceTime?: Date): T
       destination: 'المدينة المنورة - محطة السلام',
       depTime: timeOffset(-1, -30),
       arrTime: timeOffset(1, 30),
+      actualDepartureTime: timeOffset(-1, -30),
+      actualStatus: 'started' as const,
       route: 'طريق الهجرة السريع',
       passengerCount: 49,
       notes: 'وفد معتمرين',
@@ -78,6 +84,8 @@ export function generateDemoTrips(baseDateStr?: string, referenceTime?: Date): T
       destination: 'جازان - ميناء الركاب',
       depTime: timeOffset(-0, -25),
       arrTime: timeOffset(1, 45),
+      actualDepartureTime: timeOffset(-0, -25),
+      actualStatus: 'started' as const,
       route: 'طريق عقبة ضلع',
       passengerCount: 38,
       notes: 'حافلة حديثة مجهزة بنظام تتبع',

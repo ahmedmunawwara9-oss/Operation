@@ -9,9 +9,17 @@ import {
   LogOut,
   ChevronDown,
   Shield,
+  Settings,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
 } from 'lucide-react';
 import { formatArabicDate, formatDigitalClock } from '../services/dateTimeUtils';
 import { AppUser } from '../services/firebase';
+import { Trip } from '../types';
+import { ScheduleKPIs } from '../services/scheduleEngine';
+import { exportTripsToExcel, exportTripsToPDF } from '../services/reportExporter';
 
 interface HeaderProps {
   currentTime: Date;
@@ -20,6 +28,10 @@ interface HeaderProps {
   onLogout?: () => void;
   isDark?: boolean;
   onToggleDark?: () => void;
+  onOpenSettings?: () => void;
+  trips?: Trip[];
+  kpis?: ScheduleKPIs;
+  companyName?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -29,13 +41,20 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   isDark = false,
   onToggleDark,
+  onOpenSettings,
+  trips = [],
+  kpis,
+  companyName,
 }) => {
   const { timeStr, secondsStr } = formatDigitalClock(currentTime, timeZone);
   const arabicDateStr = formatArabicDate(currentTime, timeZone);
 
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
+  const [exportingType, setExportingType] = useState<'excel' | 'pdf' | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleFsChange = () => {
@@ -54,10 +73,14 @@ export const Header: React.FC<HeaderProps> = ({
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
       }
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setIsUserMenuOpen(false);
+        setIsExportMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -85,6 +108,38 @@ export const Header: React.FC<HeaderProps> = ({
       }
     } catch (err) {
       console.error('Fullscreen toggle error:', err);
+    }
+  };
+
+  const handleExportExcel = () => {
+    if (trips.length === 0) return;
+    try {
+      setExportingType('excel');
+      exportTripsToExcel(trips, {
+        kpis,
+        companyName,
+        exportedBy: currentUser ? `${currentUser.displayName} (${currentUser.roleTitle})` : undefined,
+        currentTime,
+      });
+    } finally {
+      setExportingType(null);
+      setIsExportMenuOpen(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (trips.length === 0) return;
+    try {
+      setExportingType('pdf');
+      await exportTripsToPDF(trips, {
+        kpis,
+        companyName,
+        exportedBy: currentUser ? `${currentUser.displayName} (${currentUser.roleTitle})` : undefined,
+        currentTime,
+      });
+    } finally {
+      setExportingType(null);
+      setIsExportMenuOpen(false);
     }
   };
 
@@ -154,7 +209,7 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-haspopup="menu"
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border shadow-sm transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#4A9FD8] ${
                     currentUser.role === 'general_manager'
-                      ? 'bg-[#F5B13D]/12 dark:bg-[#F5B13D]/15 border-[#F5B13D]/60 dark:border-[#F5B13D]/40 hover:bg-[#F5B13D]/20'
+                      ? 'bg-[#483878]/[0.06] dark:bg-[#483878]/30 border-[#483878]/35 dark:border-[#A9DDF5]/35 hover:bg-[#483878]/12'
                       : 'bg-[#F7FBFE] dark:bg-slate-800/80 border-[#A9DDF5] dark:border-slate-700 hover:bg-[#EEF7FC] dark:hover:bg-slate-800'
                   }`}
                 >
@@ -191,7 +246,7 @@ export const Header: React.FC<HeaderProps> = ({
                         الدور الوظيفي
                       </span>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <Shield className="w-3.5 h-3.5 text-[#E8742A] shrink-0" />
+                        <Shield className="w-3.5 h-3.5 text-[#483878] dark:text-[#A9DDF5] shrink-0" />
                         <span className="text-xs font-black text-[#483878] dark:text-slate-100">
                           {currentUser.roleTitle}
                         </span>
@@ -219,14 +274,14 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Left Section: Live Makkah Weather & Digital Clock (with Live Green Dot) + Theme & Fullscreen Buttons */}
+        {/* Left Section: Live Weather & Digital Clock + Export Dropdown + Settings + Dark Mode + Fullscreen */}
         <div className="flex flex-wrap items-center gap-2.5 z-10 w-full xl:w-auto justify-between xl:justify-end">
           {/* Unified Temperature + Live Arabic Date & Digital Clock Box */}
           <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 sm:gap-3 bg-[#F7FBFE] dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-[#A9DDF5] dark:border-slate-700 shadow-sm">
             {/* Temperature Only */}
             <div className="flex items-center gap-2 shrink-0">
-              <div className="w-7 h-7 rounded-lg bg-[#F5B13D]/15 border border-[#F5B13D]/40 flex items-center justify-center text-[#F5B13D] shrink-0">
-                <Sun className="w-4 h-4 animate-pulse" />
+              <div className="w-7 h-7 rounded-lg bg-[#4A9FD8]/15 border border-[#4A9FD8]/35 flex items-center justify-center text-[#4A9FD8] shrink-0">
+                <Sun className="w-4 h-4" />
               </div>
               <span
                 dir="ltr"
@@ -239,7 +294,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Subtle Divider */}
             <div className="hidden sm:block h-7 w-px bg-[#A9DDF5] dark:bg-slate-700 shrink-0" />
 
-            {/* Live Arabic Date & Digital Clock with Pulsing "مباشر" Indicator */}
+            {/* Live Arabic Date & Digital Clock with Live Indicator */}
             <div className="flex flex-col items-center sm:items-end justify-center min-w-[180px]">
               <div className="flex items-center justify-between gap-2 w-full text-xs text-[#444444] dark:text-slate-300 font-bold mb-0.5 whitespace-nowrap">
                 <div className="flex items-center gap-1">
@@ -257,20 +312,90 @@ export const Header: React.FC<HeaderProps> = ({
                 className="font-mono tabular-nums text-lg sm:text-xl font-black text-[#483878] dark:text-slate-100 tracking-tight flex items-baseline justify-center w-full select-none leading-tight"
               >
                 <span>{timeStr}</span>
-                <span className="text-[#E8742A] text-sm sm:text-base font-bold ml-0.5">
+                <span className="text-[#4A9FD8] text-sm sm:text-base font-bold ml-0.5">
                   :{secondsStr}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Action Icon Buttons: Dark Mode Toggle + Icon-only Fullscreen */}
+          {/* Action Buttons: Compact Outline Export Dropdown + Settings + Dark Mode + Fullscreen */}
           <div className="flex items-center gap-1.5">
+            {/* Compact Outline Export Button with Excel / PDF Dropdown */}
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                type="button"
+                disabled={trips.length === 0 || exportingType !== null}
+                onClick={() => setIsExportMenuOpen((prev) => !prev)}
+                aria-expanded={isExportMenuOpen}
+                aria-haspopup="menu"
+                title={trips.length === 0 ? 'استورد جدول رحلات أولاً لتفعيل التصدير' : 'تصدير التقارير'}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#483878] dark:border-[#A9DDF5] text-[#483878] dark:text-[#A9DDF5] bg-transparent hover:bg-[#483878]/10 dark:hover:bg-[#A9DDF5]/15 disabled:opacity-45 disabled:cursor-not-allowed text-xs font-extrabold transition-colors cursor-pointer active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-[#4A9FD8] whitespace-nowrap"
+              >
+                {exportingType ? (
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                ) : (
+                  <Download className="w-4 h-4 shrink-0" />
+                )}
+                <span>تصدير</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform duration-150 ${
+                    isExportMenuOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {isExportMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute left-0 mt-2 w-44 rounded-2xl bg-white dark:bg-[#131C31] border border-[#A9DDF5] dark:border-slate-700 shadow-lg p-1.5 z-50"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleExportExcel}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold text-[#483878] dark:text-slate-100 hover:bg-[#EEF7FC] dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FileSpreadsheet className="w-4 h-4 text-[#22A06B] shrink-0" />
+                      <span>تصدير Excel</span>
+                    </span>
+                    <span className="text-[11px] font-mono text-slate-400">.xlsx</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleExportPDF}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold text-[#483878] dark:text-slate-100 hover:bg-[#EEF7FC] dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-[#4A9FD8] shrink-0" />
+                      <span>تصدير PDF</span>
+                    </span>
+                    <span className="text-[11px] font-mono text-slate-400">.pdf</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="p-2.5 rounded-xl bg-[#F7FBFE] dark:bg-slate-800/80 hover:bg-[#A9DDF5]/30 dark:hover:bg-slate-700 text-[#483878] dark:text-[#A9DDF5] transition-colors cursor-pointer active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-[#4A9FD8]"
+                title="إعدادات التشغيل والتنبيهات"
+                aria-label="إعدادات التشغيل والتنبيهات"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+            )}
+
             {onToggleDark && (
               <button
                 type="button"
                 onClick={onToggleDark}
-                className="p-2.5 rounded-xl bg-[#F7FBFE] dark:bg-slate-800/80 hover:bg-[#A9DDF5]/30 dark:hover:bg-slate-700 text-[#483878] dark:text-[#F5B13D] transition-colors cursor-pointer active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-[#4A9FD8]"
+                className="p-2.5 rounded-xl bg-[#F7FBFE] dark:bg-slate-800/80 hover:bg-[#A9DDF5]/30 dark:hover:bg-slate-700 text-[#483878] dark:text-[#A9DDF5] transition-colors cursor-pointer active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-[#4A9FD8]"
                 title={isDark ? 'تفعيل الوضع الفاتح' : 'تفعيل الوضع الليلي'}
                 aria-label={isDark ? 'تفعيل الوضع الفاتح' : 'تفعيل الوضع الليلي'}
               >
@@ -301,4 +426,3 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
-

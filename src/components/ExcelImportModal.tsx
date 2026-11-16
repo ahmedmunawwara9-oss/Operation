@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   Upload,
   FileSpreadsheet,
@@ -18,6 +18,8 @@ import {
   extractSheetData,
   autoDetectColumnMapping,
   validateAndParseRows,
+  classifyImportedTripStatus,
+  applyImportedTripClassification,
   mergeTrips,
   MergeTripsMode,
   MergeTripsResult,
@@ -35,6 +37,7 @@ interface ExcelImportModalProps {
   ) => MergeTripsResult | void;
   existingTrips?: Trip[];
   onLoadDemoData?: () => void;
+  defaultOperationDate?: string;
 }
 
 export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
@@ -42,6 +45,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   onClose,
   onConfirmImport,
   existingTrips = [],
+  defaultOperationDate,
 }) => {
   const [step, setStep] = useState<'upload' | 'mapping' | 'preview'>('upload');
   const [fileName, setFileName] = useState<string>('');
@@ -63,9 +67,16 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     passengerCount: '',
     plateNumber: '',
     notes: '',
+    actualDepartureTime: '',
+    actualArrivalTime: '',
+    actualStatus: '',
+    delayMinutes: '',
   });
   const [previews, setPreviews] = useState<ImportedRowPreview[]>([]);
-  const [operationDate, setOperationDate] = useState<string>(() => getTodayDateString());
+  const [previewNowMs, setPreviewNowMs] = useState<number>(() => Date.now());
+  const [operationDate, setOperationDate] = useState<string>(
+    () => defaultOperationDate || getTodayDateString()
+  );
   const [afterMidnightNextDay, setAfterMidnightNextDay] = useState<boolean>(false);
   const [mergeMode, setMergeMode] = useState<MergeTripsMode>('skip');
   const [importSummary, setImportSummary] = useState<Pick<
@@ -76,6 +87,21 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen && step === 'upload' && defaultOperationDate) {
+      setOperationDate(defaultOperationDate);
+    }
+  }, [isOpen, step, defaultOperationDate]);
+
+  useEffect(() => {
+    if (!isOpen || step !== 'preview') return;
+    setPreviewNowMs(Date.now());
+    const id = window.setInterval(() => {
+      setPreviewNowMs(Date.now());
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [isOpen, step]);
 
   const hasExistingTrips = existingTrips.length > 0;
 
@@ -165,11 +191,12 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       return;
     }
     setErrorMsg(null);
+    setPreviewNowMs(Date.now());
 
     const parsed = validateAndParseRows(
       rawRows,
       mapping,
-      operationDate || getTodayDateString(),
+      operationDate || defaultOperationDate || getTodayDateString(),
       afterMidnightNextDay
     );
     setPreviews(parsed);
@@ -180,10 +207,11 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     setOperationDate(nextDate);
     setAfterMidnightNextDay(nextAfterMidnight);
     if (step === 'preview' && rawRows.length > 0) {
+      setPreviewNowMs(Date.now());
       const reparsed = validateAndParseRows(
         rawRows,
         mapping,
-        nextDate || getTodayDateString(),
+        nextDate || defaultOperationDate || getTodayDateString(),
         nextAfterMidnight
       );
       setPreviews((prev) => {
@@ -206,17 +234,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     const confirmNowMs = Date.now();
     const validTrips = previews
       .filter((p) => !p.isExcluded && p.isValid && p.parsed)
-      .map((p) => {
-        const t = p.parsed as Trip;
-        const arrMs = new Date(t.arrivalDateTime).getTime();
-        const isElapsed =
-          !isNaN(arrMs) &&
-          arrMs <= confirmNowMs &&
-          t.actualStatus !== 'delayed' &&
-          t.actualStatus !== 'cancelled' &&
-          !(t.delayMinutes && t.delayMinutes > 0);
-        return isElapsed ? { ...t, isElapsedAtImport: true } : t;
-      });
+      .map((p) => applyImportedTripClassification(p.parsed as Trip, confirmNowMs));
 
     if (validTrips.length === 0) {
       setErrorMsg('لا توجد سجلات صالحة للاستيراد بعد الاستبعاد.');
@@ -242,11 +260,28 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     }
   };
 
+  const previewClassifications = new Map<
+    number,
+    ReturnType<typeof classifyImportedTripStatus>
+  >();
+  let autoCompletedCount = 0;
+  let inProgressCount = 0;
+  let upcomingCount = 0;
+
+  for (const row of previews) {
+    if (row.isValid && row.parsed) {
+      const cls = classifyImportedTripStatus(row.parsed, previewNowMs);
+      previewClassifications.set(row.rowIndex, cls);
+      if (!row.isExcluded && row.parsed.actualStatus !== 'cancelled') {
+        if (cls.computedStatus === 'auto_completed') autoCompletedCount++;
+        else if (cls.computedStatus === 'in_progress') inProgressCount++;
+        else upcomingCount++;
+      }
+    }
+  }
+
   const validCount = previews.filter((p) => !p.isExcluded && p.isValid).length;
   const invalidCount = previews.filter((p) => !p.isValid).length;
-  const elapsedCount = previews.filter(
-    (p) => !p.isExcluded && p.isValid && p.parsed?.isElapsedAtImport
-  ).length;
   const dateWarningCount = previews.filter((p) =>
     p.warnings.includes('تعذّر قراءة تاريخ هذا الصف، تم استخدام تاريخ التشغيل')
   ).length;
@@ -455,6 +490,8 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                   { key: 'destination', label: 'الوجهة *', required: true },
                   { key: 'departureTime', label: 'وقت الانطلاق *', required: true },
                   { key: 'arrivalTime', label: 'وقت الوصول *', required: true },
+                  { key: 'actualArrivalTime', label: 'وقت الوصول الفعلي (أولوية على المجدول)', required: false },
+                  { key: 'actualDepartureTime', label: 'وقت الانطلاق الفعلي', required: false },
                   { key: 'tripDate', label: 'تاريخ الرحلة', required: false },
                   { key: 'route', label: 'المسار / الخط', required: false },
                   { key: 'passengerCount', label: 'عدد الركاب', required: false },
@@ -528,33 +565,78 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                 </label>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-[#F7FBFE] dark:bg-slate-800/70 border border-[#A9DDF5] dark:border-slate-700 text-xs">
-                <div className="flex flex-wrap items-center gap-4">
-                  <div className="flex items-center gap-1.5 text-[#22A06B] dark:text-emerald-400 font-bold">
-                    <CheckCircle2 className="w-4 h-4 text-[#22A06B] dark:text-emerald-400" />
-                    <span>{validCount} رحلة جاهزة للاستيراد</span>
+              {/* Pre-import Status Summary Breakdown */}
+              <div className="p-3.5 rounded-2xl bg-[#F7FBFE] dark:bg-slate-800/70 border border-[#A9DDF5] dark:border-slate-700 space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-[#483878] dark:text-white font-black">
+                      <CheckCircle2 className="w-4 h-4 text-[#22A06B]" />
+                      <span>معاينة حالات الرحلات عند الاستيراد ({validCount} صالحة)</span>
+                    </div>
+                    {dateWarningCount > 0 && (
+                      <div className="flex items-center gap-1 text-[#9A6B00] dark:text-amber-400 font-bold">
+                        <AlertTriangle className="w-3.5 h-3.5 text-[#E5A100]" />
+                        <span>{dateWarningCount} صف بتحذير تاريخ</span>
+                      </div>
+                    )}
                   </div>
-                  {elapsedCount > 0 && (
-                    <div className="flex items-center gap-1.5 text-[#483878] dark:text-emerald-300 bg-[#22A06B]/10 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-full border border-[#22A06B]/30 font-bold">
-                      <span>{elapsedCount} رحلة منقضية الموعد (تُحسب منتهية)</span>
-                    </div>
-                  )}
-                  {dateWarningCount > 0 && (
-                    <div className="flex items-center gap-1.5 text-[#9A6B00] dark:text-amber-400 font-bold">
-                      <AlertTriangle className="w-4 h-4 text-[#E5A100]" />
-                      <span>{dateWarningCount} صف بتحذير قراءة التاريخ</span>
-                    </div>
-                  )}
-                  {invalidCount > 0 && (
-                    <div className="flex items-center gap-1.5 text-[#9A6B00] dark:text-amber-400 font-bold">
-                      <AlertTriangle className="w-4 h-4 text-[#E5A100]" />
-                      <span>{invalidCount} صف يحتاج مراجعة</span>
-                    </div>
-                  )}
+                  <p className="text-xs text-[#444444] dark:text-slate-300">
+                    يمكنك استبعاد أي صف بإلغاء التحديد أمامه
+                  </p>
                 </div>
-                <p className="text-xs text-[#444444] dark:text-slate-300">
-                  يمكنك استبعاد أي صف بإلغاء التحديد أمامه
-                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div
+                    className="p-2.5 rounded-xl bg-[#22A06B]/10 dark:bg-emerald-950/40 border border-[#22A06B]/30 flex items-center justify-between gap-2"
+                    title="حُسبت من الجدول المستورد"
+                  >
+                    <span className="font-bold text-[#22A06B] dark:text-emerald-300">منجزة تلقائياً</span>
+                    <span className="font-mono font-black text-base text-[#22A06B] dark:text-emerald-300">
+                      {autoCompletedCount}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-[#2E7CF6]/10 dark:bg-blue-950/40 border border-[#2E7CF6]/30 flex items-center justify-between gap-2">
+                    <span className="font-bold text-[#2E7CF6] dark:text-blue-300">على الطريق</span>
+                    <span className="font-mono font-black text-base text-[#2E7CF6] dark:text-blue-300">
+                      {inProgressCount}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-[#131C31] border border-[#A9DDF5] dark:border-slate-600 flex items-center justify-between gap-2">
+                    <span className="font-bold text-[#483878] dark:text-[#A9DDF5]">قادمة</span>
+                    <span className="font-mono font-black text-base text-[#483878] dark:text-white">
+                      {upcomingCount}
+                    </span>
+                  </div>
+
+                  <div
+                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+                      invalidCount > 0
+                        ? 'bg-[#D92D20]/10 dark:bg-red-950/40 border-[#D92D20]/35'
+                        : 'bg-white dark:bg-[#131C31] border-[#A9DDF5]/70 dark:border-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`font-bold ${
+                        invalidCount > 0
+                          ? 'text-[#D92D20] dark:text-red-300'
+                          : 'text-[#444444] dark:text-slate-300'
+                      }`}
+                    >
+                      صفوف بها أخطاء
+                    </span>
+                    <span
+                      className={`font-mono font-black text-base ${
+                        invalidCount > 0
+                          ? 'text-[#D92D20] dark:text-red-300'
+                          : 'text-[#444444] dark:text-slate-300'
+                      }`}
+                    >
+                      {invalidCount}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* Merge Summary & Mode Options (shown only when existing trips exist) */}
@@ -611,7 +693,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       <th className="py-2.5 px-3">المحطات</th>
                       <th className="py-2.5 px-3 text-center">التاريخ المحسوب</th>
                       <th className="py-2.5 px-3 text-center">المواعيد</th>
-                      <th className="py-2.5 px-3">التحقق</th>
+                      <th className="py-2.5 px-3">الحالة / التحقق</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#A9DDF5]/40 dark:divide-slate-700/70">
@@ -619,6 +701,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       const dateWarning = row.warnings.find((w) =>
                         w.includes('تعذّر قراءة تاريخ هذا الصف')
                       );
+                      const rowCls = previewClassifications.get(row.rowIndex);
                       return (
                         <tr
                           key={row.rowIndex}
@@ -657,7 +740,12 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                             {row.parsed?.tripDate || '-'}
                           </td>
                           <td className="py-2 px-3 text-center font-mono font-semibold text-[#483878] dark:text-slate-100 whitespace-nowrap">
-                            {row.parsed?.departureTime} - {row.parsed?.arrivalTime}
+                            <div>{row.parsed?.departureTime} - {row.parsed?.arrivalTime}</div>
+                            {row.parsed?.actualArrivalTime && (
+                              <div className="text-[11px] text-[#22A06B] dark:text-emerald-400">
+                                وصول فعلي: {row.parsed.actualArrivalTime}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2 px-3">
                             {!row.isValid ? (
@@ -668,19 +756,34 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                 <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-[#D92D20] dark:text-red-400" />
                                 {row.errors[0]}
                               </span>
-                            ) : dateWarning ? (
-                              <span
-                                className="text-xs text-[#9A6B00] dark:text-amber-400 font-bold flex items-center gap-1"
-                                title={row.warnings.join('، ')}
-                              >
-                                <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-[#E5A100]" />
-                                {dateWarning}
-                              </span>
                             ) : (
-                              <span className="text-xs text-[#22A06B] dark:text-emerald-400 font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-[#22A06B] dark:text-emerald-400" />
-                                صالح
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {rowCls?.computedStatus === 'auto_completed' ? (
+                                  <span
+                                    title="حُسبت من الجدول المستورد"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#22A06B]/10 text-[#22A06B] dark:text-emerald-300 border border-[#22A06B]/30 cursor-help"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                    <span>منجزة تلقائياً</span>
+                                  </span>
+                                ) : rowCls?.computedStatus === 'in_progress' ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#2E7CF6]/10 text-[#2E7CF6] dark:text-blue-300 border border-[#2E7CF6]/30">
+                                    <span>على الطريق</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#F0F5FA] dark:bg-slate-800 text-[#483878] dark:text-[#A9DDF5] border border-[#A9DDF5] dark:border-slate-600">
+                                    <span>قادمة</span>
+                                  </span>
+                                )}
+                                {dateWarning && (
+                                  <span
+                                    className="text-xs text-[#9A6B00] dark:text-amber-400 font-bold inline-flex items-center gap-1"
+                                    title={row.warnings.join('، ')}
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-[#E5A100]" />
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -741,7 +844,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                   className="flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-xs font-bold bg-[#E8742A] hover:bg-[#d5651e] text-white transition-all shadow-sm disabled:opacity-40 cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
-                  <span>تأكيد استيراد {validCount} رحلة</span>
+                  <span>تأكيد الاستيراد ({validCount} رحلة)</span>
                 </button>
               )}
             </>

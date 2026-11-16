@@ -6,6 +6,7 @@ import {
   addDaysToDateString,
   buildTripDateTimes,
   getTodayDateString,
+  getEffectiveArrivalInfo,
 } from './dateTimeUtils';
 
 // Standard column alias dictionary (Arabic & English)
@@ -262,6 +263,10 @@ export function autoDetectColumnMapping(headers: string[]): ColumnMapping {
     passengerCount: '',
     plateNumber: '',
     notes: '',
+    actualDepartureTime: '',
+    actualArrivalTime: '',
+    actualStatus: '',
+    delayMinutes: '',
   };
 
   const normalizedHeaders = headers.map(h => ({
@@ -306,6 +311,109 @@ function normalizeExcelActualStatus(
     return 'started';
   }
   return undefined;
+}
+
+export type ImportComputedTripStatus = 'auto_completed' | 'in_progress' | 'upcoming';
+
+export interface ImportedTripStatusClassification {
+  computedStatus: ImportComputedTripStatus;
+  isElapsedAtImport: boolean;
+  effectiveArrivalDateTime: string;
+  effectiveArrivalMs: number;
+  usedActualArrival: boolean;
+}
+
+/**
+ * Compares the current import timestamp against departure and effective arrival times.
+ * If an actualArrivalTime column is present and valid, it takes priority over scheduled arrivalTime.
+ * - effectiveArrivalMs <= nowMs -> 'auto_completed' (منجزة تلقائياً)
+ * - depMs <= nowMs < effectiveArrivalMs -> 'in_progress' (على الطريق)
+ * - nowMs < depMs -> 'upcoming' (قادمة)
+ */
+export function classifyImportedTripStatus(
+  trip: Partial<Trip>,
+  nowMs: number = Date.now()
+): ImportedTripStatusClassification {
+  const depMs = trip.departureDateTime ? new Date(trip.departureDateTime).getTime() : Number.NaN;
+  const { effectiveArrivalDateTime, effectiveArrivalMs, usedActualArrival } =
+    getEffectiveArrivalInfo(trip);
+
+  if (trip.actualStatus === 'cancelled') {
+    return {
+      computedStatus: 'upcoming',
+      isElapsedAtImport: false,
+      effectiveArrivalDateTime,
+      effectiveArrivalMs,
+      usedActualArrival,
+    };
+  }
+
+  if (!Number.isNaN(effectiveArrivalMs) && nowMs >= effectiveArrivalMs) {
+    return {
+      computedStatus: 'auto_completed',
+      isElapsedAtImport: true,
+      effectiveArrivalDateTime,
+      effectiveArrivalMs,
+      usedActualArrival,
+    };
+  }
+
+  if (!Number.isNaN(depMs) && nowMs >= depMs && (Number.isNaN(effectiveArrivalMs) || nowMs < effectiveArrivalMs)) {
+    return {
+      computedStatus: 'in_progress',
+      isElapsedAtImport: false,
+      effectiveArrivalDateTime,
+      effectiveArrivalMs,
+      usedActualArrival,
+    };
+  }
+
+  return {
+    computedStatus: 'upcoming',
+    isElapsedAtImport: false,
+    effectiveArrivalDateTime,
+    effectiveArrivalMs,
+    usedActualArrival,
+  };
+}
+
+/**
+ * Applies the import-time status classification onto a finalized Trip object before saving:
+ * - auto_completed -> isElapsedAtImport: true (no delay alerts)
+ * - in_progress -> actualStatus: 'started' (unless explicitly marked delayed/cancelled) so it enters live on-road tracking immediately
+ * - upcoming -> leaves actualStatus untouched for normal live countdown and departure alerts
+ */
+export function applyImportedTripClassification(
+  trip: Trip,
+  nowMs: number = Date.now()
+): Trip {
+  if (trip.actualStatus === 'cancelled') {
+    return { ...trip, isElapsedAtImport: false };
+  }
+
+  const classification = classifyImportedTripStatus(trip, nowMs);
+
+  if (classification.computedStatus === 'auto_completed') {
+    return {
+      ...trip,
+      isElapsedAtImport: true,
+    };
+  }
+
+  if (classification.computedStatus === 'in_progress') {
+    const hasDelayFlag =
+      trip.actualStatus === 'delayed' || Boolean(trip.delayMinutes && trip.delayMinutes > 0);
+    return {
+      ...trip,
+      isElapsedAtImport: false,
+      actualStatus: hasDelayFlag ? trip.actualStatus : trip.actualStatus || 'started',
+    };
+  }
+
+  return {
+    ...trip,
+    isElapsedAtImport: false,
+  };
 }
 
 /**
@@ -402,15 +510,14 @@ export function validateAndParseRows(
       const parsedDelayMinutes = mapping.delayMinutes
         ? parseInt(String(row[mapping.delayMinutes]), 10) || 0
         : 0;
-      const arrivalMs = new Date(arrivalDateTime).getTime();
-      const isElapsedAtImport =
-        !isNaN(arrivalMs) &&
-        arrivalMs <= importNowMs &&
-        parsedActualStatus !== 'delayed' &&
-        parsedActualStatus !== 'cancelled' &&
-        parsedDelayMinutes <= 0;
+      const parsedActualDepartureTime = mapping.actualDepartureTime
+        ? parseExcelTimeOrDate(row[mapping.actualDepartureTime])
+        : undefined;
+      const parsedActualArrivalTime = mapping.actualArrivalTime
+        ? parseExcelTimeOrDate(row[mapping.actualArrivalTime])
+        : undefined;
 
-      parsedTrip = {
+      const candidateTrip: Partial<Trip> = {
         id: `imported-${index + 1}-${Date.now()}`,
         tripNumber: rawTripNum || `TRP-${100 + index + 1}`,
         busId: rawBusId || 'غير محدد',
@@ -428,11 +535,16 @@ export function validateAndParseRows(
         route: mapping.route ? String(row[mapping.route] || '').trim() : undefined,
         plateNumber: mapping.plateNumber ? String(row[mapping.plateNumber] || '').trim() : undefined,
         notes: mapping.notes ? String(row[mapping.notes] || '').trim() : undefined,
-        actualDepartureTime: mapping.actualDepartureTime ? parseExcelTimeOrDate(row[mapping.actualDepartureTime]) : undefined,
-        actualArrivalTime: mapping.actualArrivalTime ? parseExcelTimeOrDate(row[mapping.actualArrivalTime]) : undefined,
+        actualDepartureTime: parsedActualDepartureTime || undefined,
+        actualArrivalTime: parsedActualArrivalTime || undefined,
         actualStatus: parsedActualStatus,
         delayMinutes: mapping.delayMinutes ? parsedDelayMinutes : undefined,
-        isElapsedAtImport,
+      };
+
+      const classification = classifyImportedTripStatus(candidateTrip, importNowMs);
+      parsedTrip = {
+        ...candidateTrip,
+        isElapsedAtImport: classification.isElapsedAtImport,
       };
     }
 
@@ -546,11 +658,11 @@ export function mergeTrips(
         passengerCount: incTrip.passengerCount,
         notes: incTrip.notes,
         id: current.id,
-        actualDepartureTime: current.actualDepartureTime,
-        actualArrivalTime: current.actualArrivalTime,
-        actualStatus: current.actualStatus,
-        delayMinutes: current.delayMinutes,
-        isElapsedAtImport: current.isElapsedAtImport,
+        actualDepartureTime: incTrip.actualDepartureTime ?? current.actualDepartureTime,
+        actualArrivalTime: incTrip.actualArrivalTime ?? current.actualArrivalTime,
+        actualStatus: incTrip.actualStatus ?? current.actualStatus,
+        delayMinutes: incTrip.delayMinutes ?? current.delayMinutes,
+        isElapsedAtImport: incTrip.isElapsedAtImport,
       };
       updated++;
     }

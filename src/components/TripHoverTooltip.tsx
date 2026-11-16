@@ -64,15 +64,26 @@ export const TripHoverTooltip: React.FC<TripHoverTooltipProps> = ({ hovered }) =
         <span className="font-mono text-xs font-black text-[#483878] dark:text-slate-100 truncate">
           {trip.tripNumber}
         </span>
-        <span
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold whitespace-nowrap shrink-0 ${statusMeta.badgeBg} ${statusMeta.badgeText} ${statusMeta.badgeBorder}`}
-        >
+        <div className="flex items-center gap-1.5 shrink-0">
           <span
-            className="w-1.5 h-1.5 rounded-full shrink-0"
-            style={{ backgroundColor: statusMeta.colorHex }}
-          />
-          <span>{statusMeta.label}</span>
-        </span>
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold whitespace-nowrap shrink-0 ${statusMeta.badgeBg} ${statusMeta.badgeText} ${statusMeta.badgeBorder}`}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ backgroundColor: statusMeta.colorHex }}
+            />
+            <span>{statusMeta.label}</span>
+          </span>
+          {trip.isElapsedAtImport &&
+            (trip.status === 'completed_scheduled' || trip.status === 'completed_actual') && (
+              <span
+                title="حُسبت من الجدول المستورد"
+                className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-[#22A06B]/10 text-[#22A06B] dark:text-emerald-300 border border-[#22A06B]/30 whitespace-nowrap"
+              >
+                منجزة تلقائياً
+              </span>
+            )}
+        </div>
       </div>
 
       {/* Body: Bus ID, Driver Name, Time & Route */}

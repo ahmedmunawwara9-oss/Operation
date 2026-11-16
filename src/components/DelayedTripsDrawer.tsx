@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Trip } from '../types';
 import { formatDuration, formatShortDriverName } from '../services/dateTimeUtils';
+import { hasTripDeparted } from '../services/scheduleEngine';
 
 interface DelayedTripsDrawerProps {
   isOpen: boolean;
@@ -33,6 +34,10 @@ export function computeTripDelayMinutes(trip: Trip, currentTime: Date): number {
     return Math.max(15, diffMin > 0 ? diffMin : 15);
   }
   if (trip.status === 'needs_confirmation') {
+    if (!hasTripDeparted(trip)) {
+      const depMs = new Date(trip.departureDateTime).getTime();
+      return Math.max(1, Math.round((currentTime.getTime() - depMs) / 60000));
+    }
     const arrMs = new Date(trip.arrivalDateTime).getTime();
     return Math.max(1, Math.round((currentTime.getTime() - arrMs) / 60000));
   }
@@ -150,7 +155,11 @@ export const DelayedTripsDrawer: React.FC<DelayedTripsDrawerProps> = ({
                       }`}
                     >
                       <Clock className="w-3.5 h-3.5" />
-                      <span>تأخير {formatDuration(delayMin, 'ar')}</span>
+                      <span>
+                        {!hasTripDeparted(trip) && trip.status === 'needs_confirmation'
+                          ? `لم تنطلق (${formatDuration(delayMin, 'ar')})`
+                          : `تأخير ${formatDuration(delayMin, 'ar')}`}
+                      </span>
                     </span>
                   </div>
 

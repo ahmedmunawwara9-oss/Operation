@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings,
   X,
@@ -10,6 +10,7 @@ import {
   Sliders,
   Clock,
   Tv,
+  Volume2,
 } from 'lucide-react';
 import { AppSettings, Trip } from '../types';
 import { exportTripsToCSV } from '../services/storageService';
@@ -38,6 +39,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [form, setForm] = useState<AppSettings>(settings);
   const [confirmClear, setConfirmClear] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setForm(settings);
+      setConfirmClear(false);
+    }
+  }, [isOpen, settings]);
 
   if (!isOpen) return null;
 
@@ -148,11 +156,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 id="overnight"
                 checked={form.overnightInference}
                 onChange={(e) => setForm({ ...form, overnightInference: e.target.checked })}
-                className="rounded accent-[#E8742A] cursor-pointer"
+                className="rounded accent-[#483878] cursor-pointer"
               />
               <label htmlFor="overnight" className="text-[#444444] dark:text-slate-300 font-semibold cursor-pointer select-none">
                 معالجة الرحلات الليلية تلقائياً (إضافة يوم لتاريخ الوصول إذا كان وقت الوصول أقل من الانطلاق)
               </label>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#F7FBFE] dark:bg-slate-800/70 border border-[#A9DDF5] dark:border-slate-700">
+              <label
+                htmlFor="departure-sound-toggle"
+                className="flex items-center gap-2 text-[#483878] dark:text-slate-100 font-bold cursor-pointer select-none"
+              >
+                <Volume2 className="w-4 h-4 text-[#2E7CF6] shrink-0" />
+                <span>تشغيل صوت تنبيه خفيف عند حلول وقت انطلاق الرحلة (مغلق افتراضياً)</span>
+              </label>
+              <input
+                type="checkbox"
+                id="departure-sound-toggle"
+                checked={Boolean(form.departureSoundEnabled)}
+                onChange={(e) => setForm({ ...form, departureSoundEnabled: e.target.checked })}
+                className="w-4 h-4 rounded accent-[#2E7CF6] cursor-pointer shrink-0"
+              />
             </div>
           </div>
 

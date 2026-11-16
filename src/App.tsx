@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Trip,
+  TripStatus,
   AppSettings,
   DataSourceType,
   OperationalAlert,
@@ -40,15 +41,22 @@ import { OperationalAnalytics } from './components/OperationalAnalytics';
 import { AlertCenter } from './components/AlertCenter';
 import { ExcelImportModal } from './components/ExcelImportModal';
 import { SettingsModal } from './components/SettingsModal';
-import { TripDetailModal } from './components/TripDetailModal';
+import { TripDetailDrawer } from './components/TripDetailDrawer';
 import { generateDemoTrips } from './services/demoData';
 import { LoginPage } from './components/LoginPage';
 import { UserManagementPanel } from './components/UserManagementPanel';
-import { ReportExportButtons } from './components/ReportExportButtons';
 import { DelayedTripsDrawer } from './components/DelayedTripsDrawer';
+import { LiveTripStartBanner } from './components/LiveTripStartBanner';
+import { DashboardAlertsStrip } from './components/DashboardAlertsStrip';
 import { SyncConflictModal, SyncConflictData } from './components/SyncConflictModal';
-import { formatUnifiedTime, getOperationalDateString } from './services/dateTimeUtils';
-import { FileDown } from 'lucide-react';
+import { DepartureToast, DepartureToastItem } from './components/DepartureToast';
+import { DEPARTURE_LIFECYCLE_CONFIG } from './config/departuresConfig';
+import { playSoftDepartureChime } from './services/soundService';
+import {
+  formatUnifiedTime,
+  getOperationalDateString,
+  buildTripDateTimes,
+} from './services/dateTimeUtils';
 import {
   AppUser,
   BOOTSTRAPPED_GM_EMAIL,
@@ -692,8 +700,106 @@ export default function App() {
 
   // Compute runtime statuses (progress %, elapsed, remaining)
   const computedTrips = useMemo(() => {
-    return computeAllTripsRuntime(tripsWithConflicts, currentTime);
-  }, [tripsWithConflicts, currentTime]);
+    return computeAllTripsRuntime(tripsWithConflicts, currentTime, dataSource);
+  }, [tripsWithConflicts, currentTime, dataSource]);
+
+  const activeSelectedTrip = useMemo(() => {
+    if (!selectedTrip) return null;
+    return computedTrips.find((t) => t.id === selectedTrip.id) ?? selectedTrip;
+  }, [selectedTrip, computedTrips]);
+
+  const previousTripStatusesRef = useRef<Map<string, TripStatus>>(new Map());
+  const [newlyStartedIds, setNewlyStartedIds] = useState<Set<string>>(() => new Set());
+  const [dismissedLaunchIds, setDismissedLaunchIds] = useState<Set<string>>(() => new Set());
+  const [departureToasts, setDepartureToasts] = useState<DepartureToastItem[]>([]);
+  const notifiedDueDepartureKeysRef = useRef<Set<string>>(new Set());
+
+  // Detect live transitions from scheduled_upcoming -> in_progress / started_actual
+  useEffect(() => {
+    const prevMap = previousTripStatusesRef.current;
+    const nextMap = new Map<string, TripStatus>();
+    const justTransitioned: string[] = [];
+    const inactiveToRemove: string[] = [];
+
+    for (const t of computedTrips) {
+      nextMap.set(t.id, t.status);
+      const prevStatus = prevMap.get(t.id);
+      const isActiveNow =
+        t.status === 'in_progress_scheduled' || t.status === 'started_actual';
+
+      if (prevStatus === 'scheduled_upcoming' && isActiveNow) {
+        justTransitioned.push(t.id);
+      } else if (!isActiveNow) {
+        inactiveToRemove.push(t.id);
+      }
+    }
+
+    previousTripStatusesRef.current = nextMap;
+
+    if (justTransitioned.length > 0 || inactiveToRemove.length > 0) {
+      setNewlyStartedIds((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const id of justTransitioned) {
+          if (!next.has(id)) {
+            next.add(id);
+            changed = true;
+          }
+        }
+        for (const id of inactiveToRemove) {
+          if (next.delete(id)) changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }
+  }, [computedTrips]);
+
+  // Trigger top visual Toast (+ optional soft sound) when a trip hits its departure time
+  useEffect(() => {
+    const nowMs = currentTime.getTime();
+    const graceMs = DEPARTURE_LIFECYCLE_CONFIG.DEPARTURE_GRACE_MINUTES * 60000;
+    const toastTtlMs = DEPARTURE_LIFECYCLE_CONFIG.TOAST_DISPLAY_SECONDS * 1000;
+    const newlyDue: DepartureToastItem[] = [];
+
+    for (const trip of computedTrips) {
+      if (
+        trip.status === 'cancelled' ||
+        trip.actualStatus === 'cancelled' ||
+        trip.status === 'completed_actual' ||
+        trip.status === 'completed_scheduled'
+      ) {
+        continue;
+      }
+      const depMs = new Date(trip.departureDateTime).getTime();
+      if (Number.isNaN(depMs)) continue;
+
+      const elapsedMs = nowMs - depMs;
+      if (elapsedMs >= 0 && elapsedMs < graceMs) {
+        const notifyKey = `${trip.id}|${trip.departureDateTime}`;
+        if (!notifiedDueDepartureKeysRef.current.has(notifyKey)) {
+          notifiedDueDepartureKeysRef.current.add(notifyKey);
+          newlyDue.push({
+            id: `${notifyKey}-${nowMs}`,
+            trip,
+            triggeredAtMs: Date.now(),
+          });
+        }
+      }
+    }
+
+    if (newlyDue.length > 0 && settings.departureSoundEnabled) {
+      playSoftDepartureChime();
+    }
+
+    setDepartureToasts((prev) => {
+      const wallNow = Date.now();
+      const activePrev = prev.filter((item) => wallNow - item.triggeredAtMs < toastTtlMs);
+      if (newlyDue.length === 0 && activePrev.length === prev.length) {
+        return prev;
+      }
+      return [...newlyDue, ...activePrev].slice(0, 3);
+    });
+  }, [computedTrips, currentTime, settings.departureSoundEnabled]);
 
   // Automatically move finished trips to the Archive
   useEffect(() => {
@@ -767,10 +873,15 @@ export default function App() {
       });
   }, [computedTrips, currentOperationalDate, currentUser?.displayName, dataSource, syncConflict]);
 
-  // Calculate fleet KPIs (active trips + today's auto-archived completed trips)
+  // Calculate fleet KPIs strictly for today's operational date (active today trips + today's auto-archived completed trips)
   const kpis = useMemo(() => {
-    return calculateFleetKPIs(computedTrips, archivedTodayTrips);
-  }, [computedTrips, archivedTodayTrips]);
+    return calculateFleetKPIs(
+      computedTrips,
+      archivedTodayTrips,
+      currentOperationalDate,
+      settings.timeZone
+    );
+  }, [computedTrips, archivedTodayTrips, currentOperationalDate, settings.timeZone]);
 
   // Action Handlers
   const handleConfirmImport = useCallback(
@@ -793,20 +904,29 @@ export default function App() {
   const handleLoadDemoData = useCallback(() => {
     restoredTripIdsRef.current.clear();
     saveRestoredTripIdsToStorage([]);
-    const demo = generateDemoTrips();
+    const demo = generateDemoTrips(currentOperationalDate, currentTime);
     setRawTrips(demo);
     setDataSource('demo');
     persistActiveTrips(demo, 'demo');
-  }, [persistActiveTrips]);
+  }, [currentOperationalDate, currentTime, persistActiveTrips]);
 
   const handleClearAllData = useCallback(() => {
     clearSavedData();
+    saveRestoredTripIdsToStorage([]);
     markExplicitClearInStorage();
     restoredTripIdsRef.current.clear();
+    rawTripsRef.current = [];
+    archivedTodayTripsRef.current = [];
+    previousTripStatusesRef.current = new Map();
+    notifiedDueDepartureKeysRef.current.clear();
     setRawTrips([]);
     setArchivedTodayTrips([]);
     setAutoArchiveNotice(null);
     setAckAlertIds([]);
+    setSelectedTrip(null);
+    setNewlyStartedIds(new Set());
+    setDismissedLaunchIds(new Set());
+    setDepartureToasts([]);
     persistActiveTrips([], 'scheduled');
   }, [persistActiveTrips]);
 
@@ -823,6 +943,25 @@ export default function App() {
     setAckAlertIds(allIds);
     saveAcknowledgedAlerts(allIds);
   }, [rawAlerts]);
+
+  const handleConfirmActualDeparture = useCallback(
+    (tripId: string) => {
+      const nowStr = formatUnifiedTime(currentTime, settings.timeZone);
+      const nextTrips = rawTripsRef.current.map((t) => {
+        if (t.id === tripId) {
+          return {
+            ...t,
+            actualDepartureTime: nowStr,
+            actualStatus: 'started' as const,
+          };
+        }
+        return t;
+      });
+      setRawTrips(nextTrips);
+      persistActiveTrips(nextTrips, dataSourceRef.current);
+    },
+    [currentTime, settings.timeZone, persistActiveTrips]
+  );
 
   const handleConfirmActualArrival = useCallback((tripId: string) => {
     restoredTripIdsRef.current.delete(tripId);
@@ -842,12 +981,79 @@ export default function App() {
     persistActiveTrips(nextTrips, dataSourceRef.current);
   }, [currentTime, settings.timeZone, persistActiveTrips]);
 
-  const criticalAlertsCount = alerts.filter((a) => a.severity === 'critical' && !a.acknowledged).length;
+  const handleUpdateTripTimes = useCallback(
+    (tripId: string, updates: { departureTime: string; arrivalTime: string }) => {
+      const nowMs = Date.now();
+      const nextTrips = rawTripsRef.current.map((t) => {
+        if (t.id !== tripId) return t;
+        const timing = buildTripDateTimes(
+          t.tripDate || currentOperationalDate,
+          updates.departureTime,
+          updates.arrivalTime,
+          settings.overnightInference
+        );
+        const newArrMs = new Date(timing.arrivalDateTime).getTime();
+        const isStillElapsed = Boolean(t.isElapsedAtImport) && !Number.isNaN(newArrMs) && newArrMs <= nowMs;
+        return {
+          ...t,
+          departureTime: updates.departureTime,
+          arrivalTime: updates.arrivalTime,
+          departureDateTime: timing.departureDateTime,
+          arrivalDateTime: timing.arrivalDateTime,
+          isOvernight: timing.isOvernight,
+          durationMinutes: timing.durationMinutes,
+          isElapsedAtImport: isStillElapsed,
+        };
+      });
+      setRawTrips(nextTrips);
+      persistActiveTrips(nextTrips, dataSourceRef.current);
+      setDismissedLaunchIds((prev) => {
+        if (!prev.has(tripId)) return prev;
+        const next = new Set(prev);
+        next.delete(tripId);
+        return next;
+      });
+    },
+    [currentOperationalDate, settings.overnightInference, persistActiveTrips]
+  );
+
+  const handleCancelTrip = useCallback(
+    (tripId: string) => {
+      const nextTrips = rawTripsRef.current.map((t) =>
+        t.id === tripId
+          ? {
+              ...t,
+              actualStatus: 'cancelled' as const,
+            }
+          : t
+      );
+      setRawTrips(nextTrips);
+      persistActiveTrips(nextTrips, dataSourceRef.current);
+    },
+    [persistActiveTrips]
+  );
+
+  const handleRestoreTrip = useCallback(
+    (tripId: string) => {
+      const nextTrips = rawTripsRef.current.map((t) => {
+        if (t.id !== tripId) return t;
+        const { actualStatus: _ignored, ...rest } = t;
+        return rest;
+      });
+      setRawTrips(nextTrips);
+      persistActiveTrips(nextTrips, dataSourceRef.current);
+    },
+    [persistActiveTrips]
+  );
+
+  const activeAlertsCount = alerts.filter(
+    (a) => (a.severity === 'critical' || a.severity === 'warning') && !a.acknowledged
+  ).length;
 
   // Loading skeleton while checking Firebase Auth session
   if (authLoading) {
     return (
-      <div className="min-h-screen w-full bg-gradient-to-br from-[#F7FBFE] via-[#EEF7FC] to-[#F7FBFE] dark:from-[#0B1120] dark:via-[#0F172A] dark:to-[#0B1120] p-3 sm:p-4 flex flex-col gap-3.5 font-sans select-none">
+      <div className="min-h-screen w-full bg-gradient-to-br from-[#F7FBFE] via-[#EEF7FC] to-[#F7FBFE] dark:from-[#0B1120] dark:via-[#0F172A] dark:to-[#0B1120] px-4 sm:px-6 py-4 flex flex-col gap-3.5 font-sans select-none">
         {/* Header Skeleton */}
         <div className="w-full h-20 rounded-2xl bg-white/90 dark:bg-[#131C31]/90 border border-[#A9DDF5] dark:border-slate-700 shadow-sm p-4 flex items-center justify-between animate-pulse">
           <div className="flex items-center gap-3">
@@ -924,14 +1130,27 @@ export default function App() {
   const isGeneralManager = currentUser.role === 'general_manager';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F7FBFE] via-[#EEF7FC] to-[#F7FBFE] dark:from-[#0B1120] dark:via-[#0F172A] dark:to-[#0B1120] text-[#444444] dark:text-slate-200 p-3 sm:p-4 pb-24 md:pb-4 flex flex-col font-sans select-none antialiased transition-colors">
-      {/* 1. Header with DMTC Brand & Official Logo + Logged-in User Profile */}
+    <div className="min-h-screen w-full overflow-x-hidden bg-gradient-to-br from-[#F7FBFE] via-[#EEF7FC] to-[#F7FBFE] dark:from-[#0B1120] dark:via-[#0F172A] dark:to-[#0B1120] text-[#444444] dark:text-slate-200 px-4 sm:px-6 py-4 pb-24 md:pb-5 flex flex-col font-sans select-none antialiased transition-colors box-border">
+      {/* Top Visual Departure Toast (Works smoothly inside Fullscreen mode) */}
+      <DepartureToast
+        toasts={departureToasts}
+        onDismiss={(toastId) =>
+          setDepartureToasts((prev) => prev.filter((item) => item.id !== toastId))
+        }
+        onSelectTrip={(t) => setSelectedTrip(t)}
+      />
+
+      {/* 1. Header with DMTC Brand & Official Logo + Export Dropdown + Settings + Fullscreen */}
       <Header
         currentTime={currentTime}
         timeZone={settings.timeZone}
         currentUser={currentUser}
         isDark={isDark}
         onToggleDark={() => setIsDark((prev) => !prev)}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        trips={computedTrips}
+        kpis={kpis}
+        companyName={settings.companyName}
         onLogout={async () => {
           await logoutUser();
           setCurrentUser(null);
@@ -940,62 +1159,53 @@ export default function App() {
       />
 
       {/* 2. Main Container with Sidebar + Main Content */}
-      <div className="flex-1 flex flex-col md:flex-row gap-3.5">
+      <div className="flex-1 flex flex-col md:flex-row gap-3.5 min-w-0">
         {/* Left Sidebar Navigation (Fixed bottom bar on mobile < 768px) */}
         <Sidebar
           activeTab={activeTab}
           onSelectTab={(tabId) => setActiveTab(tabId)}
           onOpenImport={() => setIsImportModalOpen(true)}
-          alertCount={criticalAlertsCount}
+          alertCount={activeAlertsCount}
           isGeneralManager={isGeneralManager}
         />
 
         {/* Right Main Content */}
-        <div className="flex-1 flex flex-col gap-3.5 overflow-hidden">
-          {/* Top 6 KPI Summary Cards */}
+        <div className="flex-1 min-w-0 flex flex-col gap-3.5">
+          {/* Top 6 KPI Summary Cards (Strictly Today's Stats) */}
           <KPICards
             kpis={kpis}
+            operationalDate={currentOperationalDate}
             onOpenDelayedDrawer={() => setIsDelayedDrawerOpen(true)}
           />
 
-          {/* Operations Report Export Bar (Excel / PDF) - Hidden when no trips exist */}
-          {activeTab !== 'users' && computedTrips.length > 0 && (
-            <div className="bg-white/95 dark:bg-[#131C31]/95 backdrop-blur-md rounded-2xl border border-[#A9DDF5] dark:border-slate-700 px-4 py-2.5 shadow-sm flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-[#483878] flex items-center justify-center text-white shadow-sm shrink-0">
-                  <FileDown className="w-4 h-4" />
-                </div>
-                <div className="flex flex-col text-right">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs sm:text-sm font-black text-[#483878] dark:text-slate-100">
-                      تصدير ومشاركة تقارير التشغيل
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-[#F7FBFE] dark:bg-slate-800 text-[#4A9FD8] dark:text-[#A9DDF5] border border-[#A9DDF5] dark:border-slate-700">
-                      {computedTrips.length} رحلة
-                    </span>
-                  </div>
-                  <span className="text-xs text-[#444444] dark:text-slate-300 font-semibold">
-                    تصدير قائمة الرحلات الحالية مع ملخص الأداء كملف Excel (.xlsx) أو تقرير PDF جاهز للمشاركة
-                  </span>
-                </div>
-              </div>
-
-              <ReportExportButtons
-                trips={computedTrips}
-                kpis={kpis}
-                companyName={settings.companyName}
-                exportedBy={`${currentUser.displayName} (${currentUser.roleTitle})`}
-                currentTime={currentTime}
-              />
-            </div>
-          )}
-
           {/* Tab Views */}
           {activeTab === 'dashboard' && (
-            <div className="flex-1 flex flex-col gap-3.5">
+            <div className="flex-1 flex flex-col gap-3.5 min-w-0">
+              {/* Visible Priority Alerts Panel (Latest 3 Critical/Warning Alerts with "تم التعامل") */}
+              <DashboardAlertsStrip
+                alerts={alerts}
+                onAcknowledgeAlert={handleAcknowledgeAlert}
+                onOpenAllAlerts={() => setActiveTab('alerts')}
+              />
+
+              <LiveTripStartBanner
+                trips={computedTrips}
+                currentTime={currentTime}
+                newlyStartedIds={newlyStartedIds}
+                dismissedIds={dismissedLaunchIds}
+                onSelectTrip={(t) => setSelectedTrip(t)}
+                onDismissTrip={(id) =>
+                  setDismissedLaunchIds((prev) => {
+                    const next = new Set(prev);
+                    next.add(id);
+                    return next;
+                  })
+                }
+              />
+
               {/* Middle Row: Animated Bus Movement Center (Left/Center) + Upcoming Departures (Right) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
-                <div className="lg:col-span-8">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch">
+                <div className="lg:col-span-8 min-w-0 flex">
                   <AnimatedBusMovementCenter
                     trips={computedTrips}
                     currentTime={currentTime}
@@ -1004,7 +1214,7 @@ export default function App() {
                     enableDashboardFeatures={true}
                   />
                 </div>
-                <div className="lg:col-span-4">
+                <div className="lg:col-span-4 min-w-0 flex">
                   <UpcomingDeparturesBoard
                     trips={computedTrips}
                     currentTime={currentTime}
@@ -1038,9 +1248,11 @@ export default function App() {
               <DailyTripTimeline
                 trips={computedTrips}
                 currentTime={currentTime}
+                selectedTripId={activeSelectedTrip?.id ?? null}
                 onSelectTrip={(t) => setSelectedTrip(t)}
                 enableArchive={true}
                 currentUser={currentUser}
+                onDeleteCurrentSchedule={handleClearAllData}
                 autoArchiveNotice={autoArchiveNotice}
                 onDismissAutoArchiveNotice={() => setAutoArchiveNotice(null)}
                 onRestoreArchive={(restoredTrips) => {
@@ -1092,6 +1304,7 @@ export default function App() {
         onConfirmImport={handleConfirmImport}
         existingTrips={rawTrips}
         onLoadDemoData={handleLoadDemoData}
+        defaultOperationDate={currentOperationalDate}
       />
 
       <SettingsModal
@@ -1111,10 +1324,16 @@ export default function App() {
         trips={computedTrips}
       />
 
-      <TripDetailModal
-        trip={selectedTrip}
+      <TripDetailDrawer
+        trip={activeSelectedTrip}
+        allTrips={computedTrips}
         onClose={() => setSelectedTrip(null)}
+        onSelectTrip={(t) => setSelectedTrip(t)}
+        onConfirmActualDeparture={handleConfirmActualDeparture}
         onConfirmActualArrival={handleConfirmActualArrival}
+        onUpdateTripTimes={handleUpdateTripTimes}
+        onCancelTrip={handleCancelTrip}
+        onRestoreTrip={handleRestoreTrip}
       />
 
       <DelayedTripsDrawer

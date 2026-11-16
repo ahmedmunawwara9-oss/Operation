@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   enabledTVScreens: ['overview', 'movement', 'departures', 'timeline', 'analytics'],
   departureWarningMinutes: 30,
   overnightInference: true,
+  departureSoundEnabled: false,
 };
 
 const IDB_NAME = 'dmtc_fleet_persistence_db';

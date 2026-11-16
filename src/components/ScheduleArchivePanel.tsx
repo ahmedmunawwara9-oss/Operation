@@ -374,11 +374,21 @@ export const ScheduleArchivePanel: React.FC<ScheduleArchivePanelProps> = ({
                             {t.departureTime} ← {t.arrivalTime}
                           </td>
                           <td className="py-2.5 px-3 text-center">
-                            <span
-                              className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border ${meta.badgeBg} ${meta.badgeText} ${meta.badgeBorder}`}
-                            >
-                              {meta.label}
-                            </span>
+                            <div className="inline-flex flex-wrap items-center justify-center gap-1">
+                              <span
+                                className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border ${meta.badgeBg} ${meta.badgeText} ${meta.badgeBorder}`}
+                              >
+                                {meta.label}
+                              </span>
+                              {t.isElapsedAtImport && (
+                                <span
+                                  title="حُسبت من الجدول المستورد"
+                                  className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#22A06B]/10 text-[#22A06B] dark:text-emerald-300 border border-[#22A06B]/30 cursor-help"
+                                >
+                                  منجزة تلقائياً
+                                </span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );

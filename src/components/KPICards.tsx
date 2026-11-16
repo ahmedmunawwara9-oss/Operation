@@ -15,6 +15,7 @@ interface KPICardsProps {
   activeFilter?: string;
   onSelectFilter?: (filter: string) => void;
   onOpenDelayedDrawer?: () => void;
+  operationalDate?: string;
 }
 
 export const KPICards: React.FC<KPICardsProps> = ({
@@ -22,6 +23,7 @@ export const KPICards: React.FC<KPICardsProps> = ({
   activeFilter = 'all',
   onSelectFilter,
   onOpenDelayedDrawer,
+  operationalDate,
 }) => {
   const delayedCount = kpis.delayedConfirmedTrips + kpis.unconfirmedExceededTrips;
   const dailyCompletionPercent =
@@ -32,7 +34,7 @@ export const KPICards: React.FC<KPICardsProps> = ({
       id: 'all',
       title: 'إجمالي الرحلات اليوم',
       value: kpis.totalTrips,
-      subtitle: 'جدول اليوم المعتمد',
+      subtitle: operationalDate ? `جدول اليوم (${operationalDate})` : 'جدول اليوم المعتمد',
       icon: Route,
       topBar: 'bg-[#483878]',
       valueColor: 'text-[#483878] dark:text-slate-100',
@@ -79,7 +81,7 @@ export const KPICards: React.FC<KPICardsProps> = ({
       value: kpis.uniqueBusesCount,
       subtitle: 'أسطول درة المنورة',
       icon: Bus,
-      topBar: 'bg-[#F5B13D]',
+      topBar: 'bg-[#483878]',
       valueColor: 'text-[#483878] dark:text-slate-100',
     },
   ];
@@ -87,7 +89,7 @@ export const KPICards: React.FC<KPICardsProps> = ({
   const hasActiveTrips = kpis.inProgressTrips > 0;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-[1fr_1fr_1fr_1.45fr_1.7fr_1fr] gap-3 sm:gap-3.5 mb-3.5 select-none items-stretch">
+    <div className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1.5fr)_minmax(0,1fr)] gap-3 sm:gap-3.5 mb-3.5 select-none items-stretch">
       {cards.map((card) => {
         const IconComponent = card.icon;
         const isSelected = activeFilter === card.id;
@@ -110,7 +112,7 @@ export const KPICards: React.FC<KPICardsProps> = ({
             key={card.id}
             type="button"
             onClick={handleCardClick}
-            className={`group relative rounded-2xl text-right flex flex-col justify-between transition-all duration-300 cursor-pointer overflow-hidden shadow-sm ${
+            className={`min-w-0 w-full group relative rounded-2xl text-right flex flex-col justify-between transition-all duration-300 cursor-pointer overflow-hidden shadow-sm ${
               isDelayedCard
                 ? hasDelays
                   ? 'col-span-2 sm:col-span-1 p-4 sm:p-4.5 min-h-[132px] bg-[#D92D20]/[0.07] dark:bg-[#D92D20]/15 backdrop-blur-md border-2 border-[#D92D20] card-delayed-pulse'

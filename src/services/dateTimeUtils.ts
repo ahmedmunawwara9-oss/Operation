@@ -258,6 +258,49 @@ export function buildTripDateTimes(
 }
 
 /**
+ * Resolves the effective arrival timestamp for a trip.
+ * If an actualArrivalTime (HH:mm) is present and valid, it takes priority over
+ * the scheduled arrivalTime / arrivalDateTime.
+ */
+export function getEffectiveArrivalInfo(trip: {
+  tripDate?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  arrivalDateTime?: string;
+  actualArrivalTime?: string;
+}): {
+  effectiveArrivalDateTime: string;
+  effectiveArrivalMs: number;
+  usedActualArrival: boolean;
+} {
+  const rawActual = (trip.actualArrivalTime || '').trim();
+  if (rawActual) {
+    const cleanedActual = cleanTimeString(rawActual);
+    if (/^\d{2}:\d{2}$/.test(cleanedActual)) {
+      const dateStr = (trip.tripDate || '').trim() || getTodayDateString();
+      const depTime = (trip.departureTime || '').trim() || '00:00';
+      const timing = buildTripDateTimes(dateStr, depTime, cleanedActual, true);
+      const actualMs = new Date(timing.arrivalDateTime).getTime();
+      if (!Number.isNaN(actualMs)) {
+        return {
+          effectiveArrivalDateTime: timing.arrivalDateTime,
+          effectiveArrivalMs: actualMs,
+          usedActualArrival: true,
+        };
+      }
+    }
+  }
+
+  const schedIso = trip.arrivalDateTime || '';
+  const schedMs = schedIso ? new Date(schedIso).getTime() : Number.NaN;
+  return {
+    effectiveArrivalDateTime: schedIso,
+    effectiveArrivalMs: schedMs,
+    usedActualArrival: false,
+  };
+}
+
+/**
  * Formats duration in Arabic / English
  */
 export function formatDuration(minutes: number, lang: 'ar' | 'en' = 'ar'): string {

@@ -56,7 +56,7 @@ export type AlertSeverity = 'critical' | 'warning' | 'info';
 
 export interface OperationalAlert {
   id: string;
-  type: 'bus_conflict' | 'driver_conflict' | 'duplicate' | 'time_invalid' | 'departure_soon' | 'exceeded_unconfirmed' | 'confirmed_delay' | 'missing_info';
+  type: 'bus_conflict' | 'driver_conflict' | 'duplicate' | 'time_invalid' | 'departure_soon' | 'exceeded_unconfirmed' | 'confirmed_delay' | 'missing_info' | 'not_started_delayed';
   severity: AlertSeverity;
   title: string;
   tripId?: string;
@@ -84,6 +84,7 @@ export interface AppSettings {
   enabledTVScreens: ('overview' | 'movement' | 'departures' | 'timeline' | 'analytics')[];
   departureWarningMinutes: number;
   overnightInference: boolean;
+  departureSoundEnabled?: boolean;
 }
 
 export interface ColumnMapping {
