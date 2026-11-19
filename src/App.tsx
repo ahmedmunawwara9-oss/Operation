@@ -36,6 +36,7 @@ import { KPICards } from './components/KPICards';
 import { AnimatedBusMovementCenter } from './components/AnimatedBusMovementCenter';
 import { UpcomingDeparturesBoard } from './components/UpcomingDeparturesBoard';
 import { BottomPanels, TodayStatusCard } from './components/BottomPanels';
+import { CityRouteMap } from './components/CityRouteMap';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { DailyTripTimeline } from './components/DailyTripTimeline';
 import { OperationalAnalytics } from './components/OperationalAnalytics';
@@ -1234,6 +1235,11 @@ export default function App() {
 
                 {showMoreDashboard && (
                   <div className="flex flex-col gap-4">
+                    <CityRouteMap
+                      trips={computedTrips}
+                      currentTime={currentTime}
+                      onSelectTrip={(t) => setSelectedTrip(t)}
+                    />
                     <LiveTripStartBanner
                       trips={computedTrips}
                       currentTime={currentTime}
@@ -1260,7 +1266,12 @@ export default function App() {
           )}
 
           {activeTab === 'movement' && (
-            <div className="flex-1 flex flex-col gap-3.5">
+            <div className="flex-1 flex flex-col gap-4">
+              <CityRouteMap
+                trips={computedTrips}
+                currentTime={currentTime}
+                onSelectTrip={(t) => setSelectedTrip(t)}
+              />
               <AnimatedBusMovementCenter
                 trips={computedTrips}
                 currentTime={currentTime}
