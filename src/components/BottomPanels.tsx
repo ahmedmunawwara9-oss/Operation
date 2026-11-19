@@ -26,6 +26,87 @@ interface BottomPanelsProps {
   hideAlertsPanel?: boolean;
 }
 
+export const TodayStatusCard: React.FC<{ trips: Trip[] }> = ({ trips }) => {
+  let completed = 0;
+  let inProgress = 0;
+  let upcoming = 0;
+
+  trips.forEach((t) => {
+    if (t.status === 'completed_scheduled' || t.status === 'completed_actual') {
+      completed++;
+    } else if (t.status === 'in_progress_scheduled' || t.status === 'started_actual') {
+      inProgress++;
+    } else if (t.status === 'scheduled_upcoming') {
+      upcoming++;
+    }
+  });
+
+  const classifiedTotal = completed + inProgress + upcoming;
+  const pct = (value: number) =>
+    classifiedTotal > 0 ? `${(value / classifiedTotal) * 100}%` : '0%';
+
+  const rows = [
+    { label: 'على الطريق', count: inProgress, color: '#4A9FD8' },
+    { label: 'قادمة', count: upcoming, color: '#483878' },
+    { label: 'مكتملة', count: completed, color: '#22A06B' },
+  ];
+
+  return (
+    <section className="w-full card-white rounded-2xl p-4 sm:p-5 select-none flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[16px] font-bold text-[#483878] dark:text-slate-100">
+          حالة اليوم
+        </h2>
+        <span className="font-mono tabular-nums text-[13px] font-bold text-[#444444] dark:text-slate-300">
+          {classifiedTotal} رحلة
+        </span>
+      </div>
+
+      {/* Thin Segmented Status Bar */}
+      <div
+        className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex"
+        role="img"
+        aria-label={`حالة اليوم: على الطريق ${inProgress}، قادمة ${upcoming}، مكتملة ${completed}`}
+      >
+        {classifiedTotal > 0 &&
+          rows.map((row) =>
+            row.count > 0 ? (
+              <div
+                key={row.label}
+                style={{ width: pct(row.count), backgroundColor: row.color }}
+                className="h-full transition-all duration-300"
+              />
+            ) : null
+          )}
+      </div>
+
+      {/* Three-Row Legend with Counts */}
+      <div className="flex flex-col gap-2.5">
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="flex items-center justify-between gap-2 text-[13px]"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: row.color }}
+                aria-hidden="true"
+              />
+              <span className="font-semibold text-[#444444] dark:text-slate-200">
+                {row.label}
+              </span>
+            </div>
+            <span className="font-mono tabular-nums font-bold text-[#483878] dark:text-slate-100">
+              {row.count}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
 export const BottomPanels: React.FC<BottomPanelsProps> = ({
   trips,
   alerts,
@@ -48,16 +129,14 @@ export const BottomPanels: React.FC<BottomPanelsProps> = ({
   const total = trips.length;
 
   const donutData = [
-    { name: 'مكتملة', value: completed, color: '#22A06B' }, // أخضر الحالة
-    { name: 'جارية الآن', value: inProgress, color: '#2E7CF6' }, // أزرق الحالة
-    { name: 'قادمة', value: upcoming, color: '#4A9FD8' }, // أزرق فاتح
-    { name: 'متأخرة', value: delayed, color: '#D92D20' }, // أحمر الحالة
+    { name: 'مكتملة', value: completed, color: '#22A06B' },
+    { name: 'جارية الآن', value: inProgress, color: '#2E7CF6' },
+    { name: 'قادمة', value: upcoming, color: '#4A9FD8' },
+    { name: 'متأخرة', value: delayed, color: '#D92D20' },
   ];
 
-  // If completely empty, show an empty light ring placeholder
   const emptyDonutPlaceholder = [{ name: 'فارغ', value: 1, color: '#E2E8F0' }];
 
-  // 2. Hourly distribution for Bar Chart covering full operational day 00:00 (12 AM) to 24:00 (00 night)
   const targetHours = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
   const barData = targetHours.map((hour) => {
     const label = `${String(hour).padStart(2, '0')}:00`;
@@ -74,26 +153,24 @@ export const BottomPanels: React.FC<BottomPanelsProps> = ({
     };
   });
 
-  // Display alerts
   const displayAlerts = alerts.slice(0, 4);
 
   return (
     <div
       className={`grid grid-cols-1 ${
         hideAlertsPanel ? 'md:grid-cols-2' : 'md:grid-cols-3'
-      } gap-3.5 select-none`}
+      } gap-4 select-none`}
     >
       {/* 1. Left Card: حالة الرحلات اليوم (Donut Chart) */}
-      <div className="bg-white/95 dark:bg-[#131C31]/95 backdrop-blur-md rounded-2xl border border-[#A9DDF5] dark:border-slate-700 p-4 shadow-sm flex flex-col justify-between">
-        <div className="flex items-center gap-2 pb-2 border-b border-[#A9DDF5]/60 dark:border-slate-700 mb-2">
+      <div className="card-white rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+        <div className="flex items-center gap-2 pb-2.5 border-b border-[#A9DDF5]/60 dark:border-slate-700 mb-3">
           <div className="w-7 h-7 rounded-lg bg-[#483878]/10 dark:bg-[#483878]/40 border border-[#483878]/15 dark:border-[#A9DDF5]/20 flex items-center justify-center text-[#483878] dark:text-[#A9DDF5]">
             <TrendingUp className="w-4 h-4" />
           </div>
-          <h3 className="text-sm font-bold text-[#483878] dark:text-slate-100">حالة الرحلات اليوم</h3>
+          <h3 className="text-[14px] font-bold text-[#483878] dark:text-slate-100">حالة الرحلات اليوم</h3>
         </div>
 
         <div className="flex items-center justify-between gap-2 h-44">
-          {/* Donut chart */}
           <div className="w-1/2 h-full relative flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -117,17 +194,15 @@ export const BottomPanels: React.FC<BottomPanelsProps> = ({
               </PieChart>
             </ResponsiveContainer>
 
-            {/* Center Total Count */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-2xl font-black font-mono text-[#483878] dark:text-slate-100 leading-none">
                 {total}
               </span>
-              <span className="text-xs text-[#444444] dark:text-slate-300 font-bold mt-0.5">رحلة</span>
+              <span className="text-[13px] text-[#444444] dark:text-slate-300 font-bold mt-0.5">رحلة</span>
             </div>
           </div>
 
-          {/* Legend */}
-          <div className="w-1/2 space-y-2 pr-2 text-xs sm:text-sm">
+          <div className="w-1/2 space-y-2 pr-2 text-[13px]">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#22A06B]" />
@@ -164,12 +239,12 @@ export const BottomPanels: React.FC<BottomPanelsProps> = ({
       </div>
 
       {/* 2. Center Card: توزيع الرحلات على مدار اليوم (Bar Chart) */}
-      <div className="bg-white/95 dark:bg-[#131C31]/95 backdrop-blur-md rounded-2xl border border-[#A9DDF5] dark:border-slate-700 p-4 shadow-sm flex flex-col justify-between">
-        <div className="flex items-center gap-2 pb-2 border-b border-[#A9DDF5]/60 dark:border-slate-700 mb-2">
+      <div className="card-white rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+        <div className="flex items-center gap-2 pb-2.5 border-b border-[#A9DDF5]/60 dark:border-slate-700 mb-3">
           <div className="w-7 h-7 rounded-lg bg-[#483878]/10 dark:bg-[#483878]/40 border border-[#483878]/15 dark:border-[#A9DDF5]/20 flex items-center justify-center text-[#483878] dark:text-[#A9DDF5]">
             <Tv className="w-4 h-4" />
           </div>
-          <h3 className="text-sm font-bold text-[#483878] dark:text-slate-100">توزيع الرحلات على مدار اليوم</h3>
+          <h3 className="text-[14px] font-bold text-[#483878] dark:text-slate-100">توزيع الرحلات على مدار اليوم</h3>
         </div>
 
         <div className="h-44 w-full">
@@ -189,7 +264,7 @@ export const BottomPanels: React.FC<BottomPanelsProps> = ({
                   backgroundColor: '#131C31',
                   borderColor: '#4A9FD8',
                   borderRadius: '10px',
-                  fontSize: '12px',
+                  fontSize: '13px',
                   color: '#F8FAFC',
                   boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
                 }}
@@ -200,28 +275,27 @@ export const BottomPanels: React.FC<BottomPanelsProps> = ({
         </div>
       </div>
 
-      {/* 3. Right Card: التنبيهات التشغيلية (hidden on Main Dashboard where moved to top panel) */}
+      {/* 3. Right Card: التنبيهات التشغيلية */}
       {!hideAlertsPanel && (
-        <div className="bg-white/95 dark:bg-[#131C31]/95 backdrop-blur-md rounded-2xl border border-[#A9DDF5] dark:border-slate-700 p-4 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center gap-2 pb-2 border-b border-[#A9DDF5]/60 dark:border-slate-700 mb-2">
+        <div className="card-white rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+          <div className="flex items-center gap-2 pb-2.5 border-b border-[#A9DDF5]/60 dark:border-slate-700 mb-3">
             <div className="w-7 h-7 rounded-lg bg-[#483878]/10 dark:bg-[#483878]/40 border border-[#483878]/15 dark:border-[#A9DDF5]/20 flex items-center justify-center text-[#483878] dark:text-[#A9DDF5]">
               <Bell className="w-4 h-4" />
             </div>
-            <h3 className="text-xs sm:text-sm font-bold text-[#483878] dark:text-slate-100">التنبيهات التشغيلية</h3>
+            <h3 className="text-[14px] font-bold text-[#483878] dark:text-slate-100">التنبيهات التشغيلية</h3>
           </div>
 
           <div className="h-44 flex flex-col justify-center space-y-2 overflow-y-auto pr-1">
             {displayAlerts.length === 0 ? (
-              <div className="text-center py-6 text-[#444444] dark:text-slate-300 text-xs">
-                <CheckCircle2 className="w-7 h-7 text-[#22A06B] mx-auto mb-1.5 opacity-90" />
-                <p className="font-bold text-[#483878] dark:text-slate-100">لا توجد تنبيهات تشغيلية حالياً</p>
-                <p className="text-xs text-[#444444] dark:text-slate-300 mt-0.5">النظام يعمل بصورة طبيعية ومستقرة</p>
+              <div className="flex items-center justify-center gap-2 py-4 text-[#444444] dark:text-slate-300 text-[13px]">
+                <CheckCircle2 className="w-4 h-4 text-[#22A06B]" />
+                <span className="font-bold text-[#483878] dark:text-slate-100">لا توجد تنبيهات تشغيلية حالياً</span>
               </div>
             ) : (
               displayAlerts.map((alert) => (
                 <div
                   key={alert.id}
-                  className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#F7FBFE] dark:bg-slate-800/70 border border-[#A9DDF5] dark:border-slate-700 text-xs hover:bg-[#EEF7FC] dark:hover:bg-slate-800 transition-colors"
+                  className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[#F7FBFE] dark:bg-slate-800/70 border border-[#A9DDF5] dark:border-slate-700 text-[13px]"
                 >
                   <span className="font-mono text-[#444444] dark:text-slate-300 shrink-0">{alert.timestamp}</span>
                   <span className="text-[#444444] dark:text-slate-200 font-medium truncate flex-1 text-right">

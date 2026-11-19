@@ -18,6 +18,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { Trip } from '../types';
+import { BusStatusDonutChart } from './BusStatusDonutChart';
 
 interface OperationalAnalyticsProps {
   trips: Trip[];
@@ -125,6 +126,11 @@ export const OperationalAnalytics: React.FC<OperationalAnalyticsProps> = ({ trip
 
       {/* Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Featured D3 Donut Chart: Bus Status Distribution */}
+        <div className="lg:col-span-2">
+          <BusStatusDonutChart trips={trips} />
+        </div>
+
         {/* Chart 1 */}
         <div className="bg-[#F7FBFE] dark:bg-slate-800/70 p-4 rounded-2xl border border-[#A9DDF5] dark:border-slate-700">
           <div className="flex items-center justify-between mb-3">

@@ -35,7 +35,8 @@ import { Sidebar } from './components/Sidebar';
 import { KPICards } from './components/KPICards';
 import { AnimatedBusMovementCenter } from './components/AnimatedBusMovementCenter';
 import { UpcomingDeparturesBoard } from './components/UpcomingDeparturesBoard';
-import { BottomPanels } from './components/BottomPanels';
+import { BottomPanels, TodayStatusCard } from './components/BottomPanels';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { DailyTripTimeline } from './components/DailyTripTimeline';
 import { OperationalAnalytics } from './components/OperationalAnalytics';
 import { AlertCenter } from './components/AlertCenter';
@@ -337,6 +338,7 @@ export default function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isDelayedDrawerOpen, setIsDelayedDrawerOpen] = useState<boolean>(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
+  const [showMoreDashboard, setShowMoreDashboard] = useState<boolean>(false);
 
   // Live Clock loop
   useEffect(() => {
@@ -1170,8 +1172,17 @@ export default function App() {
         />
 
         {/* Right Main Content */}
-        <div className="flex-1 min-w-0 flex flex-col gap-3.5">
-          {/* Top 6 KPI Summary Cards (Strictly Today's Stats) */}
+        <div className="flex-1 min-w-0 flex flex-col gap-4 sm:gap-5">
+          {/* Single Alert Banner under Header (only shown when conflicts/delays exist) */}
+          {activeTab === 'dashboard' && (
+            <DashboardAlertsStrip
+              alerts={alerts}
+              onAcknowledgeAlert={handleAcknowledgeAlert}
+              onOpenAllAlerts={() => setActiveTab('alerts')}
+            />
+          )}
+
+          {/* Top 5 KPI Summary Cards */}
           <KPICards
             kpis={kpis}
             operationalDate={currentOperationalDate}
@@ -1180,32 +1191,10 @@ export default function App() {
 
           {/* Tab Views */}
           {activeTab === 'dashboard' && (
-            <div className="flex-1 flex flex-col gap-3.5 min-w-0">
-              {/* Visible Priority Alerts Panel (Latest 3 Critical/Warning Alerts with "تم التعامل") */}
-              <DashboardAlertsStrip
-                alerts={alerts}
-                onAcknowledgeAlert={handleAcknowledgeAlert}
-                onOpenAllAlerts={() => setActiveTab('alerts')}
-              />
-
-              <LiveTripStartBanner
-                trips={computedTrips}
-                currentTime={currentTime}
-                newlyStartedIds={newlyStartedIds}
-                dismissedIds={dismissedLaunchIds}
-                onSelectTrip={(t) => setSelectedTrip(t)}
-                onDismissTrip={(id) =>
-                  setDismissedLaunchIds((prev) => {
-                    const next = new Set(prev);
-                    next.add(id);
-                    return next;
-                  })
-                }
-              />
-
-              {/* Middle Row: Animated Bus Movement Center (Left/Center) + Upcoming Departures (Right) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch">
-                <div className="lg:col-span-8 min-w-0 flex">
+            <div className="flex-1 flex flex-col gap-4 sm:gap-5 min-w-0">
+              {/* Main Area: Two Columns (Wide Movement Card + 340px Narrow Column) */}
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4 sm:gap-5 items-start">
+                <div className="min-w-0 w-full">
                   <AnimatedBusMovementCenter
                     trips={computedTrips}
                     currentTime={currentTime}
@@ -1214,21 +1203,59 @@ export default function App() {
                     enableDashboardFeatures={true}
                   />
                 </div>
-                <div className="lg:col-span-4 min-w-0 flex">
+
+                <div className="w-full flex flex-col gap-4 min-w-0">
                   <UpcomingDeparturesBoard
                     trips={computedTrips}
                     currentTime={currentTime}
                     onSelectTrip={(t) => setSelectedTrip(t)}
                   />
+                  <TodayStatusCard trips={computedTrips} />
                 </div>
               </div>
 
-              {/* Bottom Row: 2 Analytics Charts (Alerts moved above) */}
-              <BottomPanels
-                trips={computedTrips}
-                alerts={alerts}
-                hideAlertsPanel={true}
-              />
+              {/* Collapsible Secondary Widgets ("المزيد") */}
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-start">
+                  <button
+                    type="button"
+                    onClick={() => setShowMoreDashboard((prev) => !prev)}
+                    aria-expanded={showMoreDashboard}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl card-white hover:border-[#4A9FD8] text-[13px] font-bold text-[#483878] dark:text-slate-100 transition-colors cursor-pointer"
+                  >
+                    <span>المزيد</span>
+                    {showMoreDashboard ? (
+                      <ChevronUp className="w-4 h-4 text-[#4A9FD8]" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-[#4A9FD8]" />
+                    )}
+                  </button>
+                </div>
+
+                {showMoreDashboard && (
+                  <div className="flex flex-col gap-4">
+                    <LiveTripStartBanner
+                      trips={computedTrips}
+                      currentTime={currentTime}
+                      newlyStartedIds={newlyStartedIds}
+                      dismissedIds={dismissedLaunchIds}
+                      onSelectTrip={(t) => setSelectedTrip(t)}
+                      onDismissTrip={(id) =>
+                        setDismissedLaunchIds((prev) => {
+                          const next = new Set(prev);
+                          next.add(id);
+                          return next;
+                        })
+                      }
+                    />
+                    <BottomPanels
+                      trips={computedTrips}
+                      alerts={alerts}
+                      hideAlertsPanel={true}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

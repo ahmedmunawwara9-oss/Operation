@@ -25,14 +25,17 @@ export const UpcomingDeparturesBoard: React.FC<UpcomingDeparturesBoardProps> = (
   currentTime,
   onSelectTrip,
   maxRows = DEPARTURE_LIFECYCLE_CONFIG.MAX_VISIBLE_ROWS,
+  isTVMode,
 }) => {
+  void isTVMode;
+
   const [showRecentlyDeparted, setShowRecentlyDeparted] = useState(false);
 
   const currentMs = currentTime.getTime();
   const nearWindowMs = DEPARTURE_LIFECYCLE_CONFIG.NEAR_WINDOW_MINUTES * 60000;
   const graceWindowMs = DEPARTURE_LIFECYCLE_CONFIG.DEPARTURE_GRACE_MINUTES * 60000;
 
-  // Upcoming trips active within the 4-stage automatic lifecycle (8-10 visible rows with scroll)
+  // Upcoming trips active within the 4-stage automatic lifecycle
   const upcomingTrips = useMemo(() => {
     return trips
       .filter((t) => {
@@ -58,217 +61,176 @@ export const UpcomingDeparturesBoard: React.FC<UpcomingDeparturesBoardProps> = (
   }, [trips]);
 
   return (
-    <div className="w-full h-full bg-white/95 dark:bg-[#131C31]/95 backdrop-blur-md rounded-2xl border border-[#A9DDF5] dark:border-slate-700 p-4 shadow-sm relative select-none flex flex-col justify-between">
-      {/* Box Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-[#A9DDF5]/60 dark:border-slate-700 mb-3 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#483878]/10 dark:bg-[#483878]/40 border border-[#483878]/15 dark:border-[#A9DDF5]/20 flex items-center justify-center text-[#483878] dark:text-[#A9DDF5]">
-            <Clock className="w-4 h-4" />
-          </div>
-          <h2 className="text-base sm:text-lg font-black text-[#483878] dark:text-slate-100">
-            الرحلات القادمة
-          </h2>
-        </div>
-
-        <span className="text-xs sm:text-sm font-mono font-bold text-[#483878] dark:text-[#A9DDF5] bg-[#EEF2F7] dark:bg-slate-800 px-2.5 py-0.5 rounded-lg border border-[#CBD5E1] dark:border-slate-700">
-          {upcomingTrips.length} رحلات
+    <section className="w-full card-white rounded-2xl p-4 sm:p-5 select-none flex flex-col gap-4">
+      {/* Compact Header */}
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[16px] font-bold text-[#483878] dark:text-slate-100">
+          الرحلات القادمة
+        </h2>
+        <span className="text-[12px] font-mono font-bold text-[#483878] dark:text-[#A9DDF5] bg-[#EEF2F7] dark:bg-slate-800 px-2.5 py-0.5 rounded-full border border-[#CBD5E1] dark:border-slate-700">
+          {upcomingTrips.length}
         </span>
       </div>
 
-      {/* Table Content with smooth vertical internal scrolling */}
-      <div className="overflow-x-auto overflow-y-auto max-h-[450px] flex-1 pr-0.5">
-        <table className="w-full text-right text-sm sm:text-[15px] border-collapse">
-          <thead className="sticky top-0 z-10 bg-white/95 dark:bg-[#131C31]/95 backdrop-blur-xs">
-            <tr className="border-b border-[#A9DDF5] dark:border-slate-700 text-[#483878] dark:text-slate-200 text-xs sm:text-sm font-bold">
-              <th className="py-3 px-2.5">رقم الرحلة</th>
-              <th className="py-3 px-2.5">رقم الحافلة</th>
-              <th className="py-3 px-2.5">الوجهة</th>
-              <th className="py-3 px-2.5 text-center">وقت المغادرة</th>
-              <th className="py-3 px-2.5 text-center">الحالة</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#A9DDF5]/40 dark:divide-slate-700/70">
-            {upcomingTrips.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="py-12 text-center text-[#444444] dark:text-slate-300 text-sm font-medium"
+      {/* Compact Empty State or Clean List */}
+      {upcomingTrips.length === 0 ? (
+        <div className="flex items-center gap-2 py-2 text-[13px] font-medium text-[#444444] dark:text-slate-300">
+          <Clock className="w-4 h-4 text-[#4A9FD8] shrink-0" aria-hidden="true" />
+          <span>لا توجد رحلات قادمة حالياً</span>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5 max-h-[340px] overflow-y-auto pl-0.5">
+          <AnimatePresence initial={false} mode="popLayout">
+            {upcomingTrips.map((trip) => {
+              const depMs = new Date(trip.departureDateTime).getTime();
+              const diffMs = depMs - currentMs;
+              const isDueNow = diffMs <= 0;
+              const isNear = diffMs > 0 && diffMs <= nearWindowMs;
+              const departed = hasTripDeparted(trip);
+              const unassignedNear =
+                (isNear || isDueNow) && !departed && isTripUnassigned(trip);
+
+              let rowStyle =
+                'bg-[#F7FBFE] dark:bg-slate-800/70 border-[#A9DDF5]/80 dark:border-slate-700 hover:border-[#4A9FD8]';
+              let badgeStyle =
+                'bg-[#EEF2F7] dark:bg-slate-800 text-[#334155] dark:text-slate-200 border-[#CBD5E1] dark:border-slate-600 font-bold';
+              let badgeText = '';
+
+              if (isDueNow) {
+                rowStyle =
+                  'bg-[#4A9FD8]/12 dark:bg-[#4A9FD8]/20 border-[#2E7CF6]/70';
+                badgeStyle =
+                  'bg-[#2E7CF6]/15 text-[#1D4ED8] dark:text-[#93C5FD] border-[#2E7CF6]/45 font-bold';
+                badgeText = departed ? 'انطلقت الآن' : 'حان وقت الانطلاق';
+              } else if (isNear) {
+                rowStyle =
+                  'bg-[#E5A100]/10 dark:bg-[#E5A100]/15 border-[#E5A100]/45';
+                badgeStyle =
+                  'bg-[#E5A100]/18 text-[#92400E] dark:text-[#FDE68A] border-[#E5A100]/45 font-mono tabular-nums font-bold';
+                badgeText = formatCountdownMMSS(diffMs);
+              } else {
+                const totalMinutes = Math.max(1, Math.ceil(diffMs / 60000));
+                badgeStyle =
+                  'bg-[#EEF2F7] dark:bg-slate-800 text-[#334155] dark:text-slate-200 border-[#CBD5E1] dark:border-slate-600 font-bold';
+                badgeText = `بعد ${totalMinutes} د`;
+              }
+
+              const hasBus = Boolean(trip.busId && trip.busId !== 'غير محدد');
+
+              return (
+                <motion.button
+                  type="button"
+                  key={trip.id}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{
+                    duration: DEPARTURE_LIFECYCLE_CONFIG.EXIT_ANIMATION_SECONDS,
+                    ease: [0.16, 1, 0.3, 1],
+                  }}
+                  onClick={() => onSelectTrip && onSelectTrip(trip)}
+                  className={`w-full text-right p-3 rounded-xl border transition-colors cursor-pointer flex flex-col gap-1.5 ${rowStyle}`}
                 >
-                  لا توجد رحلات قادمة مسجلة حالياً
-                </td>
-              </tr>
-            ) : (
-              <AnimatePresence initial={false} mode="popLayout">
-                {upcomingTrips.map((trip) => {
-                  const depMs = new Date(trip.departureDateTime).getTime();
-                  const diffMs = depMs - currentMs;
-                  const isDueNow = diffMs <= 0;
-                  const isNear = diffMs > 0 && diffMs <= nearWindowMs;
-                  const departed = hasTripDeparted(trip);
-                  const unassignedNear =
-                    (isNear || isDueNow) && !departed && isTripUnassigned(trip);
-
-                  let rowStyle =
-                    'hover:bg-[#EEF7FC] dark:hover:bg-slate-800/80 transition-colors cursor-pointer';
-                  let badgeStyle =
-                    'bg-[#EEF2F7] dark:bg-slate-800 text-[#334155] dark:text-slate-200 border-[#CBD5E1] dark:border-slate-600 font-bold';
-                  let badgeText = '';
-
-                  if (isDueNow) {
-                    // Phase 3: حان وقت الانطلاق (light blue background, blue border, soft pulse)
-                    rowStyle =
-                      'bg-[#4A9FD8]/15 dark:bg-[#4A9FD8]/20 ring-1 ring-inset ring-[#2E7CF6]/70 hover:bg-[#4A9FD8]/22 cursor-pointer transition-colors';
-                    badgeStyle =
-                      'bg-[#2E7CF6]/15 text-[#2E7CF6] dark:text-[#60A5FA] border-[#2E7CF6]/50 font-black animate-pulse';
-                    badgeText = departed ? 'حان وقت الانطلاق · انطلقت' : 'حان وقت الانطلاق';
-                  } else if (isNear) {
-                    // Phase 2: قريبة (last 30 min -> light yellow bg + live MM:SS countdown)
-                    rowStyle =
-                      'bg-[#E5A100]/12 dark:bg-[#E5A100]/15 hover:bg-[#E5A100]/18 dark:hover:bg-[#E5A100]/22 cursor-pointer transition-colors';
-                    badgeStyle =
-                      'bg-[#E5A100]/18 text-[#9A6B00] dark:text-[#F5B13D] border-[#E5A100]/50 font-mono tabular-nums font-black';
-                    badgeText = formatCountdownMMSS(diffMs);
-                  } else {
-                    // Phase 1: قادمة (> 30 min -> cool blue-gray badge: light background + dark text)
-                    const totalMinutes = Math.max(1, Math.ceil(diffMs / 60000));
-                    badgeStyle =
-                      'bg-[#EEF2F7] dark:bg-slate-800/90 text-[#334155] dark:text-slate-200 border-[#CBD5E1] dark:border-slate-600 font-bold';
-                    badgeText = `تنطلق بعد ${totalMinutes} دقيقة`;
-                  }
-
-                  return (
-                    <motion.tr
-                      key={trip.id}
-                      layout
-                      initial={{ opacity: 0, y: 16 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, x: -28 }}
-                      transition={{
-                        duration: DEPARTURE_LIFECYCLE_CONFIG.EXIT_ANIMATION_SECONDS,
-                        ease: [0.16, 1, 0.3, 1],
-                      }}
-                      onClick={() => onSelectTrip && onSelectTrip(trip)}
-                      className={rowStyle}
-                    >
-                      <td className="py-3.5 px-2.5 font-mono font-bold text-[#483878] dark:text-slate-100 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          {isDueNow && (
-                            <span className="w-2 h-2 rounded-full bg-[#2E7CF6] animate-ping shrink-0" />
-                          )}
-                          <span>{trip.tripNumber}</span>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-2.5 font-mono font-semibold text-[#4A9FD8] dark:text-[#A9DDF5] whitespace-nowrap">
-                        {trip.busId && trip.busId !== 'غير محدد' ? (
-                          trip.busId
-                        ) : (
-                          <span className="text-[#D92D20] dark:text-red-300 font-bold">
-                            غير محدد
-                          </span>
-                        )}
-                      </td>
-                      <td
-                        className="py-3.5 px-2.5 text-[#444444] dark:text-slate-200 font-semibold whitespace-nowrap max-w-[140px] truncate"
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="font-mono text-[13px] font-bold text-[#483878] dark:text-slate-100 shrink-0">
+                        {hasBus ? trip.busId : 'غير محدد'}
+                      </span>
+                      <span
+                        className="text-[13px] font-semibold text-[#444444] dark:text-slate-200 truncate"
                         title={trip.destination}
                       >
                         {trip.destination}
-                      </td>
-                      <td className="py-3.5 px-2.5 text-center font-mono tabular-nums font-bold text-[#483878] dark:text-slate-100 whitespace-nowrap">
-                        {trip.departureTime}
-                      </td>
-                      <td className="py-3.5 px-2.5 text-center whitespace-nowrap">
-                        <div className="inline-flex flex-col items-center gap-1">
-                          <span
-                            className={`inline-block px-3 py-1 rounded-full text-xs sm:text-[13px] border ${badgeStyle}`}
-                          >
-                            {badgeText}
-                          </span>
-                          {unassignedNear && (
-                            <span
-                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-[#D92D20]/12 text-[#D92D20] dark:text-red-300 border border-[#D92D20]/40"
-                              title="الرحلة تقترب من الإقلاع بدون حافلة أو سائق مسندين"
-                            >
-                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                              <span>غير مسندة</span>
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </motion.tr>
-                  );
-                })}
-              </AnimatePresence>
-            )}
-          </tbody>
-        </table>
-      </div>
+                      </span>
+                    </div>
+
+                    <span className="font-mono tabular-nums text-[13px] font-bold text-[#483878] dark:text-slate-100 shrink-0">
+                      {trip.departureTime}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`px-2 py-0.5 rounded-full text-[12px] border ${badgeStyle}`}>
+                      {badgeText}
+                    </span>
+
+                    {unassignedNear && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#D92D20]/12 text-[#B42318] dark:text-red-300 border border-[#D92D20]/35"
+                        title="الرحلة تقترب من الإقلاع بدون حافلة أو سائق مسندين"
+                      >
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>غير مسندة</span>
+                      </span>
+                    )}
+                  </div>
+                </motion.button>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Footer: Recently Departed Log ("انطلقت مؤخراً") */}
-      <div className="pt-3 mt-2 border-t border-[#A9DDF5]/50 dark:border-slate-700/80 shrink-0">
-        <button
-          type="button"
-          onClick={() => setShowRecentlyDeparted((prev) => !prev)}
-          className="w-full flex items-center justify-between text-xs sm:text-sm font-bold text-[#483878] dark:text-[#A9DDF5] hover:text-[#2E7CF6] transition-colors cursor-pointer py-1 px-1 rounded-lg"
-        >
-          <span className="inline-flex items-center gap-1.5">
-            <History className="w-4 h-4 text-[#22A06B]" />
-            <span>انطلقت مؤخراً</span>
-            <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-[#22A06B]/10 text-[#22A06B] border border-[#22A06B]/30">
-              {recentlyDepartedTrips.length}
+      {recentlyDepartedTrips.length > 0 && (
+        <div className="pt-3 border-t border-[#A9DDF5]/50 dark:border-slate-700/80">
+          <button
+            type="button"
+            onClick={() => setShowRecentlyDeparted((prev) => !prev)}
+            className="w-full flex items-center justify-between text-[13px] font-bold text-[#483878] dark:text-[#A9DDF5] hover:text-[#2E7CF6] transition-colors cursor-pointer py-1 rounded-lg"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <History className="w-4 h-4 text-[#22A06B]" />
+              <span>انطلقت مؤخراً</span>
+              <span className="px-2 py-0.5 rounded-full text-[12px] font-mono bg-[#22A06B]/10 text-[#22A06B] border border-[#22A06B]/30">
+                {recentlyDepartedTrips.length}
+              </span>
             </span>
-          </span>
-          {showRecentlyDeparted ? (
-            <ChevronUp className="w-4 h-4" />
-          ) : (
-            <ChevronDown className="w-4 h-4" />
-          )}
-        </button>
+            {showRecentlyDeparted ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
+          </button>
 
-        <AnimatePresence initial={false}>
-          {showRecentlyDeparted && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.25 }}
-              className="overflow-hidden"
-            >
-              <div className="mt-2 space-y-1.5 max-h-44 overflow-y-auto">
-                {recentlyDepartedTrips.length === 0 ? (
-                  <p className="text-xs text-center text-[#444444] dark:text-slate-400 py-3 bg-[#F7FBFE] dark:bg-slate-800/60 rounded-xl border border-[#A9DDF5]/50 dark:border-slate-700">
-                    لا توجد رحلات منطلقة مسجلة مؤخراً
-                  </p>
-                ) : (
-                  recentlyDepartedTrips.map((trip) => (
+          <AnimatePresence initial={false}>
+            {showRecentlyDeparted && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto">
+                  {recentlyDepartedTrips.map((trip) => (
                     <button
                       type="button"
                       key={trip.id}
                       onClick={() => onSelectTrip && onSelectTrip(trip)}
-                      className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[#F7FBFE] dark:bg-slate-800/70 hover:bg-[#EEF7FC] dark:hover:bg-slate-800 border border-[#A9DDF5]/60 dark:border-slate-700 text-right text-xs transition-colors cursor-pointer"
+                      className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl bg-[#F7FBFE] dark:bg-slate-800/70 hover:bg-[#EEF7FC] dark:hover:bg-slate-800 border border-[#A9DDF5]/60 dark:border-slate-700 text-right text-[13px] transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-mono font-black text-[#483878] dark:text-slate-100 shrink-0">
-                          {trip.tripNumber}
-                        </span>
-                        <span className="inline-flex items-center gap-1 font-mono font-semibold text-[#4A9FD8] shrink-0">
-                          <Bus className="w-3 h-3" />
+                        <span className="inline-flex items-center gap-1 font-mono font-bold text-[#483878] dark:text-slate-100 shrink-0">
+                          <Bus className="w-3.5 h-3.5 text-[#4A9FD8]" />
                           {trip.busId}
                         </span>
-                        <span className="text-[#444444] dark:text-slate-300 truncate">
+                        <span className="text-[#444444] dark:text-slate-300 truncate" title={trip.destination}>
                           {trip.destination}
                         </span>
                       </div>
-                      <span className="font-mono tabular-nums font-bold text-[#22A06B] bg-[#22A06B]/10 border border-[#22A06B]/30 px-2 py-0.5 rounded-full shrink-0">
+                      <span className="font-mono tabular-nums font-bold text-[#22A06B] text-[12px] shrink-0">
                         {trip.actualDepartureTime || trip.departureTime}
                       </span>
                     </button>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+    </section>
   );
 };
