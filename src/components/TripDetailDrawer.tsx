@@ -18,7 +18,11 @@ import {
   Save,
 } from 'lucide-react';
 import { Trip } from '../types';
-import { getStatusMeta, hasTripDeparted } from '../services/scheduleEngine';
+import {
+  getStatusMeta,
+  hasTripDeparted,
+  isAwaitingArrivalConfirmation,
+} from '../services/scheduleEngine';
 import {
   buildTripDateTimes,
   formatDuration,
@@ -183,6 +187,11 @@ export const TripDetailDrawer: React.FC<TripDetailDrawerProps> = ({
                 <span className="font-mono tabular-nums">{trip.tripDate}</span>
                 <span aria-hidden="true">·</span>
                 <span className={`font-bold ${statusMeta.badgeText}`}>{statusMeta.label}</span>
+                {isAwaitingArrivalConfirmation(trip) && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#E5A100]/12 text-[#92400E] dark:text-amber-300 border border-[#E5A100]/35">
+                    بانتظار تأكيد الوصول
+                  </span>
+                )}
                 {trip.isElapsedAtImport &&
                   (trip.status === 'completed_scheduled' || trip.status === 'completed_actual') && (
                     <span

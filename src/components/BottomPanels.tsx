@@ -36,61 +36,46 @@ export const TodayStatusCard: React.FC<{
   let inProgress = 0;
   let upcoming = 0;
   let delayed = 0;
-  let conflictedOther = 0;
+  let conflictCount = 0;
   let totalToday = 0;
 
   if (kpis) {
     completed = kpis.completedTrips;
     inProgress = kpis.inProgressTrips;
     upcoming = kpis.upcomingTrips;
+    delayed = kpis.delayedConfirmedTrips + kpis.unconfirmedExceededTrips;
+    conflictCount = kpis.conflictCount;
     totalToday = kpis.totalTrips;
-
-    const exceptionRemainder = Math.max(0, totalToday - (completed + inProgress + upcoming));
-    delayed = Math.min(
-      exceptionRemainder,
-      kpis.delayedConfirmedTrips + kpis.unconfirmedExceededTrips
-    );
-    conflictedOther = Math.max(0, exceptionRemainder - delayed);
   } else {
     trips.forEach((t) => {
       if (t.status === 'cancelled' || t.actualStatus === 'cancelled') return;
       totalToday++;
       if (t.status === 'completed_scheduled' || t.status === 'completed_actual') {
         completed++;
-      } else if (t.status === 'in_progress_scheduled' || t.status === 'started_actual') {
-        inProgress++;
-      } else if (isTripUpcoming(t, currentTime)) {
-        upcoming++;
       } else if (t.status === 'delayed_confirmed' || t.status === 'needs_confirmation') {
         delayed++;
-      } else if (t.status === 'conflict') {
-        conflictedOther++;
+      } else if (isTripUpcoming(t, currentTime)) {
+        upcoming++;
+      } else {
+        inProgress++;
+      }
+      if (t.conflicts && t.conflicts.length > 0) {
+        conflictCount++;
       }
     });
   }
 
-  const otherExceptionsCount = Math.max(0, totalToday - (completed + inProgress + upcoming));
-  const denominator = totalToday > 0 ? totalToday : completed + inProgress + upcoming;
+  const denominator = totalToday > 0 ? totalToday : completed + inProgress + upcoming + delayed;
   const pct = (value: number) => (denominator > 0 ? `${(value / denominator) * 100}%` : '0%');
 
   const rows = [
     { label: 'على الطريق', count: inProgress, color: '#4A9FD8' },
     { label: 'قادمة', count: upcoming, color: '#483878' },
     { label: 'مكتملة', count: completed, color: '#22A06B' },
+    ...(delayed > 0 ? [{ label: 'متأخرة', count: delayed, color: '#D92D20' }] : []),
   ];
 
-  let exceptionNote = '';
-  if (otherExceptionsCount > 0) {
-    if (conflictedOther > 0 && delayed > 0) {
-      exceptionNote = `منها ${conflictedOther} متعارضة و${delayed} متأخرة`;
-    } else if (conflictedOther > 0) {
-      exceptionNote = `منها ${conflictedOther} متعارضة`;
-    } else if (delayed > 0) {
-      exceptionNote = `منها ${delayed} متأخرة`;
-    } else {
-      exceptionNote = `منها ${otherExceptionsCount} متعارضة / متأخرة`;
-    }
-  }
+  const conflictNote = conflictCount > 0 ? `منها ${conflictCount} متعارضة` : '';
 
   return (
     <section className="w-full card-white rounded-2xl p-4 sm:p-5 select-none flex flex-col gap-4">
@@ -102,9 +87,9 @@ export const TodayStatusCard: React.FC<{
           <span className="font-mono tabular-nums text-[14px] font-bold text-[#483878] dark:text-slate-100">
             {totalToday} رحلة
           </span>
-          {exceptionNote && (
+          {conflictNote && (
             <p className="text-[13px] font-semibold text-[#D92D20] dark:text-red-300 leading-tight mt-0.5">
-              {exceptionNote}
+              {conflictNote}
             </p>
           )}
         </div>
@@ -114,31 +99,21 @@ export const TodayStatusCard: React.FC<{
       <div
         className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex"
         role="img"
-        aria-label={`حالة اليوم: إجمالي ${totalToday}، على الطريق ${inProgress}، قادمة ${upcoming}، مكتملة ${completed}${exceptionNote ? ` (${exceptionNote})` : ''}`}
+        aria-label={`حالة اليوم: إجمالي ${totalToday}، على الطريق ${inProgress}، قادمة ${upcoming}، مكتملة ${completed}${delayed > 0 ? `، متأخرة ${delayed}` : ''}${conflictNote ? ` (${conflictNote})` : ''}`}
       >
-        {denominator > 0 && (
-          <>
-            {rows.map((row) =>
-              row.count > 0 ? (
-                <div
-                  key={row.label}
-                  style={{ width: pct(row.count), backgroundColor: row.color }}
-                  className="h-full transition-all duration-300"
-                />
-              ) : null
-            )}
-            {otherExceptionsCount > 0 && (
+        {denominator > 0 &&
+          rows.map((row) =>
+            row.count > 0 ? (
               <div
-                style={{ width: pct(otherExceptionsCount), backgroundColor: '#D92D20' }}
+                key={row.label}
+                style={{ width: pct(row.count), backgroundColor: row.color }}
                 className="h-full transition-all duration-300"
-                title={exceptionNote}
               />
-            )}
-          </>
-        )}
+            ) : null
+          )}
       </div>
 
-      {/* Three-Row Legend with Counts */}
+      {/* Status Legend with Counts */}
       <div className="flex flex-col gap-2.5">
         {rows.map((row) => (
           <div

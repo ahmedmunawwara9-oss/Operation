@@ -31,11 +31,34 @@ export function isTripUnassigned(trip: Trip): boolean {
   return busMissing || driverMissing;
 }
 
+export function isAwaitingArrivalConfirmation(trip: Trip, currentTime?: Date): boolean {
+  if (trip.actualStatus === 'cancelled' || trip.status === 'cancelled') return false;
+  if (
+    trip.actualStatus === 'completed' ||
+    Boolean(trip.actualArrivalTime && trip.actualArrivalTime.trim() !== '')
+  ) {
+    return false;
+  }
+  if (trip.status === 'completed_scheduled') {
+    return true;
+  }
+  if (currentTime) {
+    const { effectiveArrivalMs } = getEffectiveArrivalInfo(trip);
+    const arrMs = !Number.isNaN(effectiveArrivalMs)
+      ? effectiveArrivalMs
+      : new Date(trip.arrivalDateTime).getTime();
+    return !Number.isNaN(arrMs) && currentTime.getTime() >= arrMs;
+  }
+  return false;
+}
+
 export function computeTripRuntimeState(
   trip: Trip,
   currentTime: Date,
   dataSource?: DataSourceType
 ): Trip {
+  void dataSource;
+
   const currentMs = currentTime.getTime();
   const depMs = new Date(trip.departureDateTime).getTime();
   const arrMs = new Date(trip.arrivalDateTime).getTime();
@@ -52,32 +75,24 @@ export function computeTripRuntimeState(
   const remainingMs = Math.max(0, effectiveArrMs - currentMs);
   const remainingMinutes = Math.floor(remainingMs / 60000);
 
-  const departed = hasTripDeparted(trip);
-  const notStartedDelayMs = DEPARTURE_LIFECYCLE_CONFIG.NOT_STARTED_DELAY_MINUTES * 60000;
+  const isExplicitlyCompleted = trip.actualStatus === 'completed';
+  const hasEndedByTime = !Number.isNaN(effectiveArrMs) && currentMs >= effectiveArrMs;
+  const hasRecordedDelay =
+    trip.actualStatus === 'delayed' || Boolean(trip.delayMinutes && trip.delayMinutes > 0);
 
-  // Status Precedence
-  let status: TripStatus = 'scheduled_upcoming';
+  // Exclusive 4-state schedule-time classification (ignores stored actualStatus = 'started' and conflict override)
+  let status: TripStatus;
 
   if (trip.actualStatus === 'cancelled') {
     status = 'cancelled';
-  } else if (trip.actualStatus === 'completed' || (currentMs >= effectiveArrMs && usedActualArrival)) {
-    status = 'completed_actual';
-  } else if (Boolean(trip.isElapsedAtImport) && currentMs >= effectiveArrMs) {
-    status = usedActualArrival ? 'completed_actual' : 'completed_scheduled';
-  } else if (trip.conflicts && trip.conflicts.length > 0) {
-    status = 'conflict';
-  } else if (trip.actualStatus === 'delayed' || (trip.delayMinutes && trip.delayMinutes > 0)) {
+  } else if (isExplicitlyCompleted || hasEndedByTime) {
+    status = isExplicitlyCompleted || usedActualArrival ? 'completed_actual' : 'completed_scheduled';
+  } else if (hasRecordedDelay) {
     status = 'delayed_confirmed';
-  } else if (departed) {
-    status = currentMs < effectiveArrMs ? 'started_actual' : 'completed_scheduled';
-  } else if (dataSource === 'gps_live' && currentMs >= depMs) {
-    status = currentMs < effectiveArrMs ? 'in_progress_scheduled' : 'completed_scheduled';
-  } else if (currentMs < depMs + notStartedDelayMs && currentMs < effectiveArrMs) {
-    // Still before scheduled departure or within the pre-delay grace window
+  } else if (Number.isNaN(depMs) || currentMs < depMs) {
     status = 'scheduled_upcoming';
   } else {
-    // Exceeded NOT_STARTED_DELAY_MINUTES after departure without starting -> escalates to delayed
-    status = 'needs_confirmation';
+    status = 'in_progress_scheduled';
   }
 
   return {
@@ -118,28 +133,32 @@ export function isTripForOperationalDate(
 
 /**
  * Shared single source of truth for whether a trip is considered "قادمة" (Upcoming)
- * across both the KPI summary card and the Upcoming Departures list.
+ * across KPI cards, Upcoming Departures list, and Today Status Card:
+ * Strictly before departure time (currentMs < depMs), not cancelled, not completed, and not delayed.
  */
 export function isTripUpcoming(trip: Trip, currentTime: Date = new Date()): boolean {
   if (trip.status === 'cancelled' || trip.actualStatus === 'cancelled') return false;
   if (
+    trip.actualStatus === 'completed' ||
     trip.status === 'completed_actual' ||
-    trip.status === 'completed_scheduled' ||
-    trip.actualStatus === 'completed'
+    trip.status === 'completed_scheduled'
   ) {
     return false;
   }
-  if (
-    hasTripDeparted(trip) ||
-    trip.status === 'in_progress_scheduled' ||
-    trip.status === 'started_actual'
-  ) {
+  if (trip.actualStatus === 'delayed' || Boolean(trip.delayMinutes && trip.delayMinutes > 0)) {
+    return false;
+  }
+  const currentMs = currentTime.getTime();
+  const { effectiveArrivalMs } = getEffectiveArrivalInfo(trip);
+  const arrMs = !Number.isNaN(effectiveArrivalMs)
+    ? effectiveArrivalMs
+    : new Date(trip.arrivalDateTime).getTime();
+  if (!Number.isNaN(arrMs) && currentMs >= arrMs) {
     return false;
   }
   const depMs = new Date(trip.departureDateTime).getTime();
   if (Number.isNaN(depMs)) return false;
-  const graceWindowMs = DEPARTURE_LIFECYCLE_CONFIG.DEPARTURE_GRACE_MINUTES * 60000;
-  return currentTime.getTime() < depMs + graceWindowMs;
+  return currentMs < depMs;
 }
 
 export function calculateFleetKPIs(
@@ -175,14 +194,12 @@ export function calculateFleetKPIs(
   const uniqueDrivers = new Set<string>();
   let totalActiveToday = 0;
   let inProgress = 0;
+  let upcoming = 0;
   let completed = 0;
   let delayedConfirmed = 0;
-  let unconfirmedExceeded = 0;
+  const unconfirmedExceeded = 0;
   let conflictCount = 0;
   let totalPassengers = 0;
-
-  // Use the exact same definition as UpcomingDeparturesBoard across active trips
-  const upcoming = activeTrips.filter((t) => isTripUpcoming(t, currentTime)).length;
 
   for (const t of todayActiveTrips) {
     if (t.status === 'cancelled' || t.actualStatus === 'cancelled') continue;
@@ -191,17 +208,17 @@ export function calculateFleetKPIs(
     if (t.driverName) uniqueDrivers.add(t.driverName);
     if (t.passengerCount) totalPassengers += t.passengerCount;
 
-    if (t.status === 'in_progress_scheduled' || t.status === 'started_actual') {
-      inProgress++;
-    } else if (t.status === 'completed_scheduled' || t.status === 'completed_actual') {
+    if (t.status === 'completed_scheduled' || t.status === 'completed_actual') {
       completed++;
-    } else if (t.status === 'delayed_confirmed') {
+    } else if (t.status === 'delayed_confirmed' || t.status === 'needs_confirmation') {
       delayedConfirmed++;
-    } else if (t.status === 'needs_confirmation') {
-      unconfirmedExceeded++;
+    } else if (isTripUpcoming(t, currentTime)) {
+      upcoming++;
+    } else {
+      inProgress++;
     }
 
-    if (t.status === 'conflict' || (t.conflicts && t.conflicts.length > 0)) {
+    if (t.conflicts && t.conflicts.length > 0) {
       conflictCount++;
     }
   }
@@ -211,6 +228,9 @@ export function calculateFleetKPIs(
     if (t.driverName) uniqueDrivers.add(t.driverName);
     if (t.passengerCount) totalPassengers += t.passengerCount;
     completed++;
+    if (t.conflicts && t.conflicts.length > 0) {
+      conflictCount++;
+    }
   }
 
   return {

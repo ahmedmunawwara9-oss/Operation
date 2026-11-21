@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Bus, MapPin, Navigation, RotateCcw } from 'lucide-react';
+import { Bus, MapPin, Navigation, RotateCcw, Maximize2, Minimize2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Trip } from '../types';
 import { computeTripDelayMinutes } from './DelayedTripsDrawer';
@@ -28,6 +28,8 @@ interface CityRouteMapProps {
   trips: Trip[];
   currentTime: Date;
   onSelectTrip?: (trip: Trip) => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 const CITIES: Record<CityId, CityNode> = {
@@ -157,6 +159,8 @@ export const CityRouteMap: React.FC<CityRouteMapProps> = ({
   trips,
   currentTime,
   onSelectTrip,
+  isExpanded = false,
+  onToggleExpand,
 }) => {
   const [statusFilter, setStatusFilter] = useState<'all' | MapStatusCategory>('all');
   const [selectedCity, setSelectedCity] = useState<CityId | null>(null);
@@ -298,7 +302,11 @@ export const CityRouteMap: React.FC<CityRouteMapProps> = ({
   const cityList = Object.values(CITIES);
 
   return (
-    <section className="w-full card-white rounded-2xl p-4 sm:p-6 select-none flex flex-col gap-4">
+    <section
+      className={`w-full card-white rounded-2xl p-4 sm:p-6 select-none flex flex-col gap-4 ${
+        isExpanded ? 'flex-1' : ''
+      }`}
+    >
       {/* Header & Interactive Filters */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
@@ -359,6 +367,36 @@ export const CityRouteMap: React.FC<CityRouteMapProps> = ({
               <span>إعادة ضبط</span>
             </button>
           )}
+
+          {onToggleExpand && (
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              aria-pressed={isExpanded}
+              title={
+                isExpanded
+                  ? 'تقليص الخريطة وإظهار الأعمدة الجانبية'
+                  : 'توسيع الخريطة لتشغل كامل المساحة الرئيسية'
+              }
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[13px] font-bold transition-colors cursor-pointer ${
+                isExpanded
+                  ? 'bg-[#483878] text-white hover:bg-[#3a2d63] shadow-2xs'
+                  : 'bg-[#EEF7FC] dark:bg-slate-800 text-[#483878] dark:text-[#A9DDF5] border border-[#4A9FD8]/60 dark:border-slate-600 hover:bg-[#E1F1FA] dark:hover:bg-slate-700'
+              }`}
+            >
+              {isExpanded ? (
+                <>
+                  <Minimize2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>تقليص الخريطة</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>توسيع الخريطة</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -366,7 +404,11 @@ export const CityRouteMap: React.FC<CityRouteMapProps> = ({
       <div className="relative w-full rounded-2xl bg-[#F2F8FD] dark:bg-[#0D1526] border border-[#A9DDF5] dark:border-slate-700 overflow-hidden">
         <svg
           viewBox="0 0 700 370"
-          className="w-full h-[300px] sm:h-[360px] block"
+          className={
+            isExpanded
+              ? 'w-full h-[460px] sm:h-[560px] lg:h-[620px] block'
+              : 'w-full h-[300px] sm:h-[360px] block'
+          }
           role="img"
           aria-label="خريطة مسارات الحافلات بين جدة ومكة المكرمة والمدينة المنورة"
         >

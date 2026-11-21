@@ -1,7 +1,7 @@
 import React from 'react';
 import { Bus, User, Clock, Navigation, AlertTriangle } from 'lucide-react';
 import { Trip } from '../types';
-import { getStatusMeta } from '../services/scheduleEngine';
+import { getStatusMeta, isAwaitingArrivalConfirmation } from '../services/scheduleEngine';
 
 export interface HoveredTripState {
   trip: Trip;
@@ -74,6 +74,11 @@ export const TripHoverTooltip: React.FC<TripHoverTooltipProps> = ({ hovered }) =
             />
             <span>{statusMeta.label}</span>
           </span>
+          {isAwaitingArrivalConfirmation(trip) && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-[#E5A100]/12 text-[#92400E] dark:text-amber-300 border border-[#E5A100]/35 whitespace-nowrap">
+              بانتظار تأكيد الوصول
+            </span>
+          )}
           {trip.isElapsedAtImport &&
             (trip.status === 'completed_scheduled' || trip.status === 'completed_actual') && (
               <span

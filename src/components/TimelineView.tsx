@@ -8,7 +8,7 @@ import {
   ArrowUpDown,
 } from 'lucide-react';
 import { Trip } from '../types';
-import { getStatusMeta } from '../services/scheduleEngine';
+import { getStatusMeta, isAwaitingArrivalConfirmation } from '../services/scheduleEngine';
 import {
   formatDuration,
   formatShortDriverName,
@@ -42,15 +42,9 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     for (const t of trips) {
       if (t.status === 'in_progress_scheduled' || t.status === 'started_actual') active++;
       else if (t.status === 'scheduled_upcoming') upcoming++;
-      else if (
-        t.status === 'delayed_confirmed' ||
-        t.status === 'needs_confirmation' ||
-        t.status === 'conflict' ||
-        (t.conflicts && t.conflicts.length > 0)
-      ) {
+      else if (t.status === 'completed_actual' || t.status === 'completed_scheduled') completed++;
+      else if (t.status === 'delayed_confirmed' || t.status === 'needs_confirmation') {
         delayed++;
-      } else if (t.status === 'completed_actual' || t.status === 'completed_scheduled') {
-        completed++;
       }
     }
     return { all: trips.length, active, upcoming, delayed, completed };
@@ -246,6 +240,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                             <span className="font-bold" style={{ color: meta.colorHex }}>
                               {meta.label}
                             </span>
+                            {isAwaitingArrivalConfirmation(trip, currentTime) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#E5A100]/12 text-[#92400E] dark:text-amber-300 border border-[#E5A100]/35">
+                                بانتظار تأكيد الوصول
+                              </span>
+                            )}
                             {trip.isElapsedAtImport &&
                               (trip.status === 'completed_scheduled' || trip.status === 'completed_actual') && (
                                 <span

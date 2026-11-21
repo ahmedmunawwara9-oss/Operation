@@ -91,15 +91,22 @@ export const KPICards: React.FC<KPICardsProps> = ({
               {card.title}
             </span>
 
-            <span
-              className={`text-[40px] font-extrabold font-mono tabular-nums leading-none ${
-                hasDelays
-                  ? 'text-[#D92D20] dark:text-red-400'
-                  : 'text-[#483878] dark:text-slate-100'
-              }`}
-            >
-              {card.value}
-            </span>
+            <div className="flex items-baseline justify-between gap-2 min-w-0">
+              <span
+                className={`text-[40px] font-extrabold font-mono tabular-nums leading-none ${
+                  hasDelays
+                    ? 'text-[#D92D20] dark:text-red-400'
+                    : 'text-[#483878] dark:text-slate-100'
+                }`}
+              >
+                {card.value}
+              </span>
+              {card.isFirst && kpis.conflictCount > 0 && (
+                <span className="text-[13px] font-semibold text-[#D92D20] dark:text-red-300 whitespace-nowrap">
+                  منها {kpis.conflictCount} متعارضة
+                </span>
+              )}
+            </div>
           </button>
         );
       })}

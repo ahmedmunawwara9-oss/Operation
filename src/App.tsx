@@ -37,7 +37,7 @@ import { AnimatedBusMovementCenter } from './components/AnimatedBusMovementCente
 import { UpcomingDeparturesBoard } from './components/UpcomingDeparturesBoard';
 import { BottomPanels, TodayStatusCard } from './components/BottomPanels';
 import { CityRouteMap } from './components/CityRouteMap';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Maximize2, Minimize2 } from 'lucide-react';
 import { DailyTripTimeline } from './components/DailyTripTimeline';
 import { OperationalAnalytics } from './components/OperationalAnalytics';
 import { AlertCenter } from './components/AlertCenter';
@@ -340,6 +340,7 @@ export default function App() {
   const [isDelayedDrawerOpen, setIsDelayedDrawerOpen] = useState<boolean>(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [showMoreDashboard, setShowMoreDashboard] = useState<boolean>(false);
+  const [isMapExpanded, setIsMapExpanded] = useState<boolean>(false);
 
   // Live Clock loop
   useEffect(() => {
@@ -810,7 +811,8 @@ export default function App() {
 
     const finishedTrips = computedTrips.filter(
       (t) =>
-        (t.status === 'completed_actual' || t.status === 'completed_scheduled') &&
+        (t.status === 'completed_actual' ||
+          (t.status === 'completed_scheduled' && Boolean(t.isElapsedAtImport))) &&
         !restoredTripIdsRef.current.has(t.id)
     );
 
@@ -1159,19 +1161,22 @@ export default function App() {
           await logoutUser();
           setCurrentUser(null);
           setActiveTab('dashboard');
+          setIsMapExpanded(false);
         }}
       />
 
       {/* 2. Main Container with Sidebar + Main Content */}
       <div className="flex-1 flex flex-col md:flex-row gap-3.5 min-w-0">
-        {/* Left Sidebar Navigation (Fixed bottom bar on mobile < 768px) */}
-        <Sidebar
-          activeTab={activeTab}
-          onSelectTab={(tabId) => setActiveTab(tabId)}
-          onOpenImport={() => setIsImportModalOpen(true)}
-          alertCount={activeAlertsCount}
-          isGeneralManager={isGeneralManager}
-        />
+        {/* Left Sidebar Navigation (Temporarily hidden when map is expanded on dashboard) */}
+        {!(activeTab === 'dashboard' && isMapExpanded) && (
+          <Sidebar
+            activeTab={activeTab}
+            onSelectTab={(tabId) => setActiveTab(tabId)}
+            onOpenImport={() => setIsImportModalOpen(true)}
+            alertCount={activeAlertsCount}
+            isGeneralManager={isGeneralManager}
+          />
+        )}
 
         {/* Right Main Content */}
         <div className="flex-1 min-w-0 flex flex-col gap-4 sm:gap-5">
@@ -1194,75 +1199,119 @@ export default function App() {
           {/* Tab Views */}
           {activeTab === 'dashboard' && (
             <div className="flex-1 flex flex-col gap-4 sm:gap-5 min-w-0">
-              {/* Main Area: Two Columns (Wide Movement Card + 340px Narrow Column) */}
-              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4 sm:gap-5 items-start">
-                <div className="min-w-0 w-full">
-                  <AnimatedBusMovementCenter
-                    trips={computedTrips}
-                    currentTime={currentTime}
-                    onSelectTrip={(t) => setSelectedTrip(t)}
-                    onOpenImport={() => setIsImportModalOpen(true)}
-                    enableDashboardFeatures={true}
-                  />
-                </div>
-
-                <div className="w-full flex flex-col gap-4 min-w-0">
-                  <UpcomingDeparturesBoard
-                    trips={computedTrips}
-                    currentTime={currentTime}
-                    onSelectTrip={(t) => setSelectedTrip(t)}
-                  />
-                  <TodayStatusCard trips={computedTrips} kpis={kpis} currentTime={currentTime} />
-                </div>
+              {/* Map Fullscreen/Expand Mode Toggle Bar */}
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsMapExpanded((prev) => !prev)}
+                  aria-pressed={isMapExpanded}
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold transition-colors cursor-pointer ${
+                    isMapExpanded
+                      ? 'bg-[#483878] text-white hover:bg-[#3a2d63] shadow-sm'
+                      : 'card-white hover:border-[#4A9FD8] text-[#483878] dark:text-slate-100'
+                  }`}
+                >
+                  {isMapExpanded ? (
+                    <>
+                      <Minimize2 className="w-4 h-4 shrink-0" />
+                      <span>إعادة العرض الافتراضي (إظهار الأعمدة الجانبية)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="w-4 h-4 text-[#4A9FD8] shrink-0" />
+                      <span>توسيع خريطة مسارات الحافلات</span>
+                    </>
+                  )}
+                </button>
               </div>
 
-              {/* Collapsible Secondary Widgets ("المزيد") */}
-              <div className="flex flex-col gap-3">
-                <div className="flex justify-start">
-                  <button
-                    type="button"
-                    onClick={() => setShowMoreDashboard((prev) => !prev)}
-                    aria-expanded={showMoreDashboard}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl card-white hover:border-[#4A9FD8] text-[13px] font-bold text-[#483878] dark:text-slate-100 transition-colors cursor-pointer"
-                  >
-                    <span>المزيد</span>
-                    {showMoreDashboard ? (
-                      <ChevronUp className="w-4 h-4 text-[#4A9FD8]" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-[#4A9FD8]" />
-                    )}
-                  </button>
+              {isMapExpanded ? (
+                <div className="flex-1 flex flex-col min-w-0 w-full">
+                  <CityRouteMap
+                    trips={computedTrips}
+                    currentTime={currentTime}
+                    onSelectTrip={(t) => setSelectedTrip(t)}
+                    isExpanded={true}
+                    onToggleExpand={() => setIsMapExpanded(false)}
+                  />
                 </div>
+              ) : (
+                <>
+                  {/* Main Area: Two Columns (Wide Movement Card + 340px Narrow Column) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4 sm:gap-5 items-start">
+                    <div className="min-w-0 w-full">
+                      <AnimatedBusMovementCenter
+                        trips={computedTrips}
+                        currentTime={currentTime}
+                        onSelectTrip={(t) => setSelectedTrip(t)}
+                        onOpenImport={() => setIsImportModalOpen(true)}
+                        enableDashboardFeatures={true}
+                      />
+                    </div>
 
-                {showMoreDashboard && (
-                  <div className="flex flex-col gap-4">
-                    <CityRouteMap
-                      trips={computedTrips}
-                      currentTime={currentTime}
-                      onSelectTrip={(t) => setSelectedTrip(t)}
-                    />
-                    <LiveTripStartBanner
-                      trips={computedTrips}
-                      currentTime={currentTime}
-                      newlyStartedIds={newlyStartedIds}
-                      dismissedIds={dismissedLaunchIds}
-                      onSelectTrip={(t) => setSelectedTrip(t)}
-                      onDismissTrip={(id) =>
-                        setDismissedLaunchIds((prev) => {
-                          const next = new Set(prev);
-                          next.add(id);
-                          return next;
-                        })
-                      }
-                    />
-                    <BottomPanels
-                      trips={computedTrips}
-                      alerts={alerts}
-                      hideAlertsPanel={true}
-                    />
+                    <div className="w-full flex flex-col gap-4 min-w-0">
+                      <UpcomingDeparturesBoard
+                        trips={computedTrips}
+                        currentTime={currentTime}
+                        onSelectTrip={(t) => setSelectedTrip(t)}
+                        operationalDate={currentOperationalDate}
+                        timeZone={settings.timeZone}
+                      />
+                      <TodayStatusCard trips={computedTrips} kpis={kpis} currentTime={currentTime} />
+                    </div>
                   </div>
-                )}
-              </div>
+
+                  {/* Collapsible Secondary Widgets ("المزيد") */}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex justify-start">
+                      <button
+                        type="button"
+                        onClick={() => setShowMoreDashboard((prev) => !prev)}
+                        aria-expanded={showMoreDashboard}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl card-white hover:border-[#4A9FD8] text-[13px] font-bold text-[#483878] dark:text-slate-100 transition-colors cursor-pointer"
+                      >
+                        <span>المزيد</span>
+                        {showMoreDashboard ? (
+                          <ChevronUp className="w-4 h-4 text-[#4A9FD8]" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-[#4A9FD8]" />
+                        )}
+                      </button>
+                    </div>
+
+                    {showMoreDashboard && (
+                      <div className="flex flex-col gap-4">
+                        <CityRouteMap
+                          trips={computedTrips}
+                          currentTime={currentTime}
+                          onSelectTrip={(t) => setSelectedTrip(t)}
+                          isExpanded={false}
+                          onToggleExpand={() => setIsMapExpanded(true)}
+                        />
+                        <LiveTripStartBanner
+                          trips={computedTrips}
+                          currentTime={currentTime}
+                          newlyStartedIds={newlyStartedIds}
+                          dismissedIds={dismissedLaunchIds}
+                          onSelectTrip={(t) => setSelectedTrip(t)}
+                          onDismissTrip={(id) =>
+                            setDismissedLaunchIds((prev) => {
+                              const next = new Set(prev);
+                              next.add(id);
+                              return next;
+                            })
+                          }
+                        />
+                        <BottomPanels
+                          trips={computedTrips}
+                          alerts={alerts}
+                          hideAlertsPanel={true}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

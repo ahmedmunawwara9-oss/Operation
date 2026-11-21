@@ -1,9 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { Clock, AlertCircle, History, ChevronDown, ChevronUp, Bus } from 'lucide-react';
+import { Clock, AlertCircle, AlertTriangle, History, ChevronDown, ChevronUp, Bus } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Trip } from '../types';
 import { DEPARTURE_LIFECYCLE_CONFIG } from '../config/departuresConfig';
-import { hasTripDeparted, isTripUnassigned, isTripUpcoming } from '../services/scheduleEngine';
+import {
+  hasTripDeparted,
+  isTripForOperationalDate,
+  isTripUnassigned,
+  isTripUpcoming,
+} from '../services/scheduleEngine';
 
 interface UpcomingDeparturesBoardProps {
   trips: Trip[];
@@ -11,6 +16,8 @@ interface UpcomingDeparturesBoardProps {
   onSelectTrip?: (trip: Trip) => void;
   maxRows?: number;
   isTVMode?: boolean;
+  operationalDate?: string;
+  timeZone?: string;
 }
 
 function formatCountdownMMSS(diffMs: number): string {
@@ -26,6 +33,8 @@ export const UpcomingDeparturesBoard: React.FC<UpcomingDeparturesBoardProps> = (
   onSelectTrip,
   maxRows = DEPARTURE_LIFECYCLE_CONFIG.MAX_VISIBLE_ROWS,
   isTVMode,
+  operationalDate,
+  timeZone,
 }) => {
   void isTVMode;
 
@@ -37,9 +46,13 @@ export const UpcomingDeparturesBoard: React.FC<UpcomingDeparturesBoardProps> = (
   // Upcoming trips active within the 4-stage automatic lifecycle (unified with KPI "قادمة")
   const allUpcomingTrips = useMemo(() => {
     return trips
-      .filter((t) => isTripUpcoming(t, currentTime))
+      .filter(
+        (t) =>
+          (!operationalDate || isTripForOperationalDate(t, operationalDate, timeZone)) &&
+          isTripUpcoming(t, currentTime)
+      )
       .sort((a, b) => new Date(a.departureDateTime).getTime() - new Date(b.departureDateTime).getTime());
-  }, [trips, currentTime]);
+  }, [trips, currentTime, operationalDate, timeZone]);
 
   const upcomingTrips = useMemo(() => {
     return allUpcomingTrips.slice(0, maxRows);
@@ -146,20 +159,32 @@ export const UpcomingDeparturesBoard: React.FC<UpcomingDeparturesBoardProps> = (
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <span className={`px-2 py-0.5 rounded-full text-[12px] border ${badgeStyle}`}>
                       {badgeText}
                     </span>
 
-                    {unassignedNear && (
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#D92D20]/12 text-[#B42318] dark:text-red-300 border border-[#D92D20]/35"
-                        title="الرحلة تقترب من الإقلاع بدون حافلة أو سائق مسندين"
-                      >
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                        <span>غير مسندة</span>
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {trip.conflicts && trip.conflicts.length > 0 && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#D92D20]/10 text-[#B42318] dark:text-red-300 border border-[#D92D20]/30"
+                          title="يوجد تعارض مجدول في هذه الرحلة"
+                        >
+                          <AlertTriangle className="w-3 h-3 shrink-0" />
+                          <span>تعارض</span>
+                        </span>
+                      )}
+
+                      {unassignedNear && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#D92D20]/12 text-[#B42318] dark:text-red-300 border border-[#D92D20]/35"
+                          title="الرحلة تقترب من الإقلاع بدون حافلة أو سائق مسندين"
+                        >
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>غير مسندة</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </motion.button>
               );

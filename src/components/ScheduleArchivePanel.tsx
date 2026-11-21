@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { ScheduleArchive, Trip } from '../types';
 import { AppUser, deleteScheduleArchive } from '../services/firebase';
-import { getStatusMeta } from '../services/scheduleEngine';
+import { getStatusMeta, isAwaitingArrivalConfirmation } from '../services/scheduleEngine';
 import { formatUnifiedDateTime, formatShortDriverName } from '../services/dateTimeUtils';
 import { ReportExportButtons } from './ReportExportButtons';
 
@@ -380,6 +380,11 @@ export const ScheduleArchivePanel: React.FC<ScheduleArchivePanelProps> = ({
                               >
                                 {meta.label}
                               </span>
+                              {isAwaitingArrivalConfirmation(t as Trip) && (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#E5A100]/12 text-[#92400E] dark:text-amber-300 border border-[#E5A100]/35">
+                                  بانتظار تأكيد الوصول
+                                </span>
+                              )}
                               {t.isElapsedAtImport && (
                                 <span
                                   title="حُسبت من الجدول المستورد"

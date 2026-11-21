@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Bus, FileSpreadsheet } from 'lucide-react';
+import { Bus, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Trip } from '../types';
 import { formatShortDriverName } from '../services/dateTimeUtils';
+import { isAwaitingArrivalConfirmation } from '../services/scheduleEngine';
 import { computeTripDelayMinutes } from './DelayedTripsDrawer';
 
 interface AnimatedBusMovementCenterProps {
@@ -84,18 +85,17 @@ export const AnimatedBusMovementCenter: React.FC<AnimatedBusMovementCenterProps>
           if (statusFilter === 'on_time') {
             return (
               delayMin === 0 &&
-              t.status !== 'conflict' &&
               (t.status === 'in_progress_scheduled' || t.status === 'started_actual')
             );
           }
           if (statusFilter === 'delayed') {
-            return delayMin > 0 || t.status === 'conflict';
+            return delayMin > 0 || t.status === 'delayed_confirmed';
           }
           if (statusFilter === 'minor_delay') {
             return delayMin > 0 && delayMin < 15;
           }
           if (statusFilter === 'major_delay') {
-            return delayMin >= 15 || t.status === 'conflict';
+            return delayMin >= 15 || t.status === 'delayed_confirmed';
           }
           if (statusFilter === 'upcoming') {
             return isUpcoming;
@@ -198,8 +198,8 @@ export const AnimatedBusMovementCenter: React.FC<AnimatedBusMovementCenterProps>
             const progressPercent = Math.max(0, Math.min(100, Math.round(trip.progress * 100)));
             const shortDriver = formatShortDriverName(trip.driverName);
             const delayMinutes = computeTripDelayMinutes(trip, currentTime);
-            const isConflict =
-              trip.status === 'conflict' || (trip.conflicts && trip.conflicts.length > 0);
+            const hasConflict = Boolean(trip.conflicts && trip.conflicts.length > 0);
+            const awaitingArrival = isAwaitingArrivalConfirmation(trip, currentTime);
             const isCompleted =
               trip.status === 'completed_actual' || trip.status === 'completed_scheduled';
             const isUpcoming = trip.status === 'scheduled_upcoming';
@@ -209,11 +209,14 @@ export const AnimatedBusMovementCenter: React.FC<AnimatedBusMovementCenterProps>
               currentTime.getTime() - new Date(trip.departureDateTime).getTime();
             const isJustStarted =
               isActiveTrip && elapsedSinceDepMs >= 0 && elapsedSinceDepMs <= 5 * 60 * 1000;
+            void isCompleted;
+            void isUpcoming;
+            void isJustStarted;
 
             const routeLabel = `${trip.origin} ← ${trip.destination}`;
 
-            // Strict status color separation: Green (#22A06B) on-time dot, Orange (#E8742A) near-delay, Red (#D92D20) delayed/conflict
-            const isMajorDelay = delayMinutes >= 15 || isConflict;
+            // Strict status color separation: Green (#22A06B) on-time dot, Orange (#E8742A) near-delay, Red (#D92D20) delayed
+            const isMajorDelay = delayMinutes >= 15 || trip.status === 'delayed_confirmed';
             const isNearDelay = !isMajorDelay && delayMinutes > 0;
             const isDelayedException = isMajorDelay || isNearDelay;
 
@@ -240,7 +243,7 @@ export const AnimatedBusMovementCenter: React.FC<AnimatedBusMovementCenterProps>
                 onClick={() => onSelectTrip && onSelectTrip(trip)}
                 className="w-full text-right px-4 py-3.5 sm:px-5 sm:py-4 rounded-xl bg-[#F7FBFE] dark:bg-slate-800/70 hover:bg-white dark:hover:bg-slate-800 border border-[#A9DDF5]/80 dark:border-slate-700 hover:border-[#4A9FD8] transition-colors flex flex-col gap-1 sm:gap-1.5 cursor-pointer"
               >
-                {/* Line 1: Navy Bus Badge + On-Time Green Dot (when on time) + Route + Exceptional Status Chip */}
+                {/* Line 1: Navy Bus Badge + On-Time Green Dot (when on time) + Route + Warning/Status Chips */}
                 <div className="flex items-center justify-between gap-3 min-w-0 w-full">
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <span className="px-2.5 py-1 rounded-lg bg-[#483878] text-white font-mono text-[13px] font-bold shrink-0">
@@ -261,13 +264,29 @@ export const AnimatedBusMovementCenter: React.FC<AnimatedBusMovementCenterProps>
                     </span>
                   </div>
 
-                  {isDelayedException && (
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[13px] font-bold shrink-0 whitespace-nowrap ${statusChipClasses}`}
-                    >
-                      {statusLabel}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                    {awaitingArrival && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0 whitespace-nowrap bg-[#E5A100]/12 text-[#92400E] dark:text-amber-300 border border-[#E5A100]/35">
+                        بانتظار تأكيد الوصول
+                      </span>
+                    )}
+                    {hasConflict && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0 whitespace-nowrap bg-[#D92D20]/10 text-[#B42318] dark:text-red-300 border border-[#D92D20]/30"
+                        title="يوجد تعارض مجدول في هذه الرحلة"
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>تعارض</span>
+                      </span>
+                    )}
+                    {isDelayedException && (
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[13px] font-bold shrink-0 whitespace-nowrap ${statusChipClasses}`}
+                      >
+                        {statusLabel}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Line 2: Driver + Bold Time Range + Thin 8px Progress Bar with 96x46 Bus SVG + Percentage */}
