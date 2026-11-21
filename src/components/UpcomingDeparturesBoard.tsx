@@ -3,7 +3,7 @@ import { Clock, AlertCircle, History, ChevronDown, ChevronUp, Bus } from 'lucide
 import { AnimatePresence, motion } from 'motion/react';
 import { Trip } from '../types';
 import { DEPARTURE_LIFECYCLE_CONFIG } from '../config/departuresConfig';
-import { hasTripDeparted, isTripUnassigned } from '../services/scheduleEngine';
+import { hasTripDeparted, isTripUnassigned, isTripUpcoming } from '../services/scheduleEngine';
 
 interface UpcomingDeparturesBoardProps {
   trips: Trip[];
@@ -33,21 +33,17 @@ export const UpcomingDeparturesBoard: React.FC<UpcomingDeparturesBoardProps> = (
 
   const currentMs = currentTime.getTime();
   const nearWindowMs = DEPARTURE_LIFECYCLE_CONFIG.NEAR_WINDOW_MINUTES * 60000;
-  const graceWindowMs = DEPARTURE_LIFECYCLE_CONFIG.DEPARTURE_GRACE_MINUTES * 60000;
 
-  // Upcoming trips active within the 4-stage automatic lifecycle
-  const upcomingTrips = useMemo(() => {
+  // Upcoming trips active within the 4-stage automatic lifecycle (unified with KPI "قادمة")
+  const allUpcomingTrips = useMemo(() => {
     return trips
-      .filter((t) => {
-        if (t.status === 'cancelled' || t.actualStatus === 'cancelled') return false;
-        if (t.status === 'completed_actual' || t.status === 'completed_scheduled') return false;
-        const depMs = new Date(t.departureDateTime).getTime();
-        if (Number.isNaN(depMs)) return false;
-        return currentMs < depMs + graceWindowMs;
-      })
-      .sort((a, b) => new Date(a.departureDateTime).getTime() - new Date(b.departureDateTime).getTime())
-      .slice(0, maxRows);
-  }, [trips, currentMs, graceWindowMs, maxRows]);
+      .filter((t) => isTripUpcoming(t, currentTime))
+      .sort((a, b) => new Date(a.departureDateTime).getTime() - new Date(b.departureDateTime).getTime());
+  }, [trips, currentTime]);
+
+  const upcomingTrips = useMemo(() => {
+    return allUpcomingTrips.slice(0, maxRows);
+  }, [allUpcomingTrips, maxRows]);
 
   // Last 5 departed trips for the "انطلقت مؤخراً" log
   const recentlyDepartedTrips = useMemo(() => {
@@ -67,8 +63,8 @@ export const UpcomingDeparturesBoard: React.FC<UpcomingDeparturesBoardProps> = (
         <h2 className="text-[16px] font-bold text-[#483878] dark:text-slate-100">
           الرحلات القادمة
         </h2>
-        <span className="text-[12px] font-mono font-bold text-[#483878] dark:text-[#A9DDF5] bg-[#EEF2F7] dark:bg-slate-800 px-2.5 py-0.5 rounded-full border border-[#CBD5E1] dark:border-slate-700">
-          {upcomingTrips.length}
+        <span className="text-[13px] font-mono font-bold text-[#483878] dark:text-[#A9DDF5] bg-[#EEF2F7] dark:bg-slate-800 px-2.5 py-0.5 rounded-full border border-[#CBD5E1] dark:border-slate-700">
+          {allUpcomingTrips.length}
         </span>
       </div>
 

@@ -19,6 +19,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { Trip, OperationalAlert } from '../types';
+import { ScheduleKPIs, isTripUpcoming } from '../services/scheduleEngine';
 
 interface BottomPanelsProps {
   trips: Trip[];
@@ -26,24 +27,51 @@ interface BottomPanelsProps {
   hideAlertsPanel?: boolean;
 }
 
-export const TodayStatusCard: React.FC<{ trips: Trip[] }> = ({ trips }) => {
+export const TodayStatusCard: React.FC<{
+  trips: Trip[];
+  kpis?: ScheduleKPIs;
+  currentTime?: Date;
+}> = ({ trips, kpis, currentTime = new Date() }) => {
   let completed = 0;
   let inProgress = 0;
   let upcoming = 0;
+  let delayed = 0;
+  let conflictedOther = 0;
+  let totalToday = 0;
 
-  trips.forEach((t) => {
-    if (t.status === 'completed_scheduled' || t.status === 'completed_actual') {
-      completed++;
-    } else if (t.status === 'in_progress_scheduled' || t.status === 'started_actual') {
-      inProgress++;
-    } else if (t.status === 'scheduled_upcoming') {
-      upcoming++;
-    }
-  });
+  if (kpis) {
+    completed = kpis.completedTrips;
+    inProgress = kpis.inProgressTrips;
+    upcoming = kpis.upcomingTrips;
+    totalToday = kpis.totalTrips;
 
-  const classifiedTotal = completed + inProgress + upcoming;
-  const pct = (value: number) =>
-    classifiedTotal > 0 ? `${(value / classifiedTotal) * 100}%` : '0%';
+    const exceptionRemainder = Math.max(0, totalToday - (completed + inProgress + upcoming));
+    delayed = Math.min(
+      exceptionRemainder,
+      kpis.delayedConfirmedTrips + kpis.unconfirmedExceededTrips
+    );
+    conflictedOther = Math.max(0, exceptionRemainder - delayed);
+  } else {
+    trips.forEach((t) => {
+      if (t.status === 'cancelled' || t.actualStatus === 'cancelled') return;
+      totalToday++;
+      if (t.status === 'completed_scheduled' || t.status === 'completed_actual') {
+        completed++;
+      } else if (t.status === 'in_progress_scheduled' || t.status === 'started_actual') {
+        inProgress++;
+      } else if (isTripUpcoming(t, currentTime)) {
+        upcoming++;
+      } else if (t.status === 'delayed_confirmed' || t.status === 'needs_confirmation') {
+        delayed++;
+      } else if (t.status === 'conflict') {
+        conflictedOther++;
+      }
+    });
+  }
+
+  const otherExceptionsCount = Math.max(0, totalToday - (completed + inProgress + upcoming));
+  const denominator = totalToday > 0 ? totalToday : completed + inProgress + upcoming;
+  const pct = (value: number) => (denominator > 0 ? `${(value / denominator) * 100}%` : '0%');
 
   const rows = [
     { label: 'على الطريق', count: inProgress, color: '#4A9FD8' },
@@ -51,33 +79,63 @@ export const TodayStatusCard: React.FC<{ trips: Trip[] }> = ({ trips }) => {
     { label: 'مكتملة', count: completed, color: '#22A06B' },
   ];
 
+  let exceptionNote = '';
+  if (otherExceptionsCount > 0) {
+    if (conflictedOther > 0 && delayed > 0) {
+      exceptionNote = `منها ${conflictedOther} متعارضة و${delayed} متأخرة`;
+    } else if (conflictedOther > 0) {
+      exceptionNote = `منها ${conflictedOther} متعارضة`;
+    } else if (delayed > 0) {
+      exceptionNote = `منها ${delayed} متأخرة`;
+    } else {
+      exceptionNote = `منها ${otherExceptionsCount} متعارضة / متأخرة`;
+    }
+  }
+
   return (
     <section className="w-full card-white rounded-2xl p-4 sm:p-5 select-none flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-[16px] font-bold text-[#483878] dark:text-slate-100">
           حالة اليوم
         </h2>
-        <span className="font-mono tabular-nums text-[13px] font-bold text-[#444444] dark:text-slate-300">
-          {classifiedTotal} رحلة
-        </span>
+        <div className="text-left">
+          <span className="font-mono tabular-nums text-[14px] font-bold text-[#483878] dark:text-slate-100">
+            {totalToday} رحلة
+          </span>
+          {exceptionNote && (
+            <p className="text-[13px] font-semibold text-[#D92D20] dark:text-red-300 leading-tight mt-0.5">
+              {exceptionNote}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Thin Segmented Status Bar */}
       <div
         className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex"
         role="img"
-        aria-label={`حالة اليوم: على الطريق ${inProgress}، قادمة ${upcoming}، مكتملة ${completed}`}
+        aria-label={`حالة اليوم: إجمالي ${totalToday}، على الطريق ${inProgress}، قادمة ${upcoming}، مكتملة ${completed}${exceptionNote ? ` (${exceptionNote})` : ''}`}
       >
-        {classifiedTotal > 0 &&
-          rows.map((row) =>
-            row.count > 0 ? (
+        {denominator > 0 && (
+          <>
+            {rows.map((row) =>
+              row.count > 0 ? (
+                <div
+                  key={row.label}
+                  style={{ width: pct(row.count), backgroundColor: row.color }}
+                  className="h-full transition-all duration-300"
+                />
+              ) : null
+            )}
+            {otherExceptionsCount > 0 && (
               <div
-                key={row.label}
-                style={{ width: pct(row.count), backgroundColor: row.color }}
+                style={{ width: pct(otherExceptionsCount), backgroundColor: '#D92D20' }}
                 className="h-full transition-all duration-300"
+                title={exceptionNote}
               />
-            ) : null
-          )}
+            )}
+          </>
+        )}
       </div>
 
       {/* Three-Row Legend with Counts */}

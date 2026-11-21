@@ -116,11 +116,38 @@ export function isTripForOperationalDate(
   return false;
 }
 
+/**
+ * Shared single source of truth for whether a trip is considered "قادمة" (Upcoming)
+ * across both the KPI summary card and the Upcoming Departures list.
+ */
+export function isTripUpcoming(trip: Trip, currentTime: Date = new Date()): boolean {
+  if (trip.status === 'cancelled' || trip.actualStatus === 'cancelled') return false;
+  if (
+    trip.status === 'completed_actual' ||
+    trip.status === 'completed_scheduled' ||
+    trip.actualStatus === 'completed'
+  ) {
+    return false;
+  }
+  if (
+    hasTripDeparted(trip) ||
+    trip.status === 'in_progress_scheduled' ||
+    trip.status === 'started_actual'
+  ) {
+    return false;
+  }
+  const depMs = new Date(trip.departureDateTime).getTime();
+  if (Number.isNaN(depMs)) return false;
+  const graceWindowMs = DEPARTURE_LIFECYCLE_CONFIG.DEPARTURE_GRACE_MINUTES * 60000;
+  return currentTime.getTime() < depMs + graceWindowMs;
+}
+
 export function calculateFleetKPIs(
   activeTrips: Trip[],
   archivedTodayTrips: Trip[] = [],
   todayDateStr?: string,
-  timeZone?: string
+  timeZone?: string,
+  currentTime: Date = new Date()
 ): ScheduleKPIs {
   const todayActiveTrips = todayDateStr
     ? activeTrips.filter((t) => isTripForOperationalDate(t, todayDateStr, timeZone))
@@ -148,12 +175,14 @@ export function calculateFleetKPIs(
   const uniqueDrivers = new Set<string>();
   let totalActiveToday = 0;
   let inProgress = 0;
-  let upcoming = 0;
   let completed = 0;
   let delayedConfirmed = 0;
   let unconfirmedExceeded = 0;
   let conflictCount = 0;
   let totalPassengers = 0;
+
+  // Use the exact same definition as UpcomingDeparturesBoard across active trips
+  const upcoming = activeTrips.filter((t) => isTripUpcoming(t, currentTime)).length;
 
   for (const t of todayActiveTrips) {
     if (t.status === 'cancelled' || t.actualStatus === 'cancelled') continue;
@@ -164,8 +193,6 @@ export function calculateFleetKPIs(
 
     if (t.status === 'in_progress_scheduled' || t.status === 'started_actual') {
       inProgress++;
-    } else if (t.status === 'scheduled_upcoming') {
-      upcoming++;
     } else if (t.status === 'completed_scheduled' || t.status === 'completed_actual') {
       completed++;
     } else if (t.status === 'delayed_confirmed') {

@@ -151,9 +151,9 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="w-full relative mb-4 select-none z-30">
       <div className="card-white rounded-2xl px-4 sm:px-6 py-3.5 flex flex-wrap xl:flex-nowrap items-center justify-between gap-4 relative">
-        {/* Right Section: 48x48 Logo + Brand Name + Operations Lines */}
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-12 h-12 rounded-xl bg-white p-1 border border-[#A9DDF5] dark:border-slate-600 flex items-center justify-center shrink-0 shadow-2xs">
+        {/* Right Section: 56x56 Logo + Brand Name + Operations Lines */}
+        <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+          <div className="w-14 h-14 rounded-xl bg-white p-1 border border-[#A9DDF5] dark:border-slate-600 flex items-center justify-center shrink-0 shadow-2xs">
             <img
               src={`${import.meta.env.BASE_URL}assets/aistudio/logo_df9a0408.jpeg`}
               alt="شعار درة المنورة لنقل الحجاج والمعتمرين - DMTC"

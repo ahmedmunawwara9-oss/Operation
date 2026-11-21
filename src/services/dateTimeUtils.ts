@@ -433,20 +433,32 @@ export function formatUnifiedDateTime(
 }
 
 /**
+ * Converts English/Latin words to Title Case (e.g. "MOHD ISLAM" -> "Mohd Islam")
+ * for unified display while leaving Arabic text untouched.
+ */
+export function toDisplayTitleCase(input: string): string {
+  return input.replace(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g, (word) => {
+    if (!word) return word;
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  });
+}
+
+/**
  * Shortens long multi-word driver names cleanly without mid-word truncation
+ * and formats English names in consistent Title Case for display.
  */
 export function formatShortDriverName(fullName?: string): string {
   if (!fullName) return 'غير محدد';
   const clean = fullName.trim().replace(/\s+/g, ' ');
   if (!clean) return 'غير محدد';
   const words = clean.split(' ');
+  let formatted = clean;
   if (words.length >= 3) {
-    return `${words[0]} ${words[words.length - 1]}`;
+    formatted = `${words[0]} ${words[words.length - 1]}`;
+  } else if (clean.length > 18 && words.length === 2) {
+    formatted = `${words[0]} ${words[1].slice(0, 6)}.`;
   }
-  if (clean.length > 18 && words.length === 2) {
-    return `${words[0]} ${words[1].slice(0, 6)}.`;
-  }
-  return clean;
+  return toDisplayTitleCase(formatted);
 }
 
 /**

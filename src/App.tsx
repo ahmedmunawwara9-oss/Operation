@@ -882,9 +882,10 @@ export default function App() {
       computedTrips,
       archivedTodayTrips,
       currentOperationalDate,
-      settings.timeZone
+      settings.timeZone,
+      currentTime
     );
-  }, [computedTrips, archivedTodayTrips, currentOperationalDate, settings.timeZone]);
+  }, [computedTrips, archivedTodayTrips, currentOperationalDate, settings.timeZone, currentTime]);
 
   // Action Handlers
   const handleConfirmImport = useCallback(
@@ -1211,7 +1212,7 @@ export default function App() {
                     currentTime={currentTime}
                     onSelectTrip={(t) => setSelectedTrip(t)}
                   />
-                  <TodayStatusCard trips={computedTrips} />
+                  <TodayStatusCard trips={computedTrips} kpis={kpis} currentTime={currentTime} />
                 </div>
               </div>
 

@@ -31,7 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const getNavBtnClass = (isActive: boolean) =>
     isActive
       ? 'bg-[#E8742A] text-white shadow-sm font-bold'
-      : 'text-[#444444] dark:text-slate-300 hover:text-[#483878] dark:hover:text-white hover:bg-[#A9DDF5]/25 dark:hover:bg-slate-800 font-semibold';
+      : 'text-[#1E293B] dark:text-slate-200 hover:text-[#483878] dark:hover:text-white hover:bg-[#A9DDF5]/25 dark:hover:bg-slate-800 font-semibold';
 
   return (
     <aside className="fixed bottom-0 left-0 right-0 z-40 flex flex-row items-center justify-around bg-white/95 dark:bg-[#131C31]/95 backdrop-blur-md border-t border-[#A9DDF5] dark:border-slate-700 rounded-t-2xl px-1.5 py-1.5 shadow-lg md:static md:w-[104px] md:flex-col md:justify-between md:rounded-2xl md:border md:p-2.5 md:shadow-sm shrink-0 select-none">
@@ -45,7 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             activeTab === 'dashboard'
           )}`}
         >
-          <Home className="w-5 h-5 shrink-0" />
+          <Home className="w-6 h-6 shrink-0" />
           <span className="text-[13px] leading-tight whitespace-nowrap">العمليات</span>
         </button>
 
@@ -57,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             activeTab === 'movement'
           )}`}
         >
-          <Bus className="w-5 h-5 shrink-0" />
+          <Bus className="w-6 h-6 shrink-0" />
           <span className="text-[13px] leading-tight whitespace-nowrap">الحافلات</span>
         </button>
 
@@ -69,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             activeTab === 'schedule'
           )}`}
         >
-          <Calendar className="w-5 h-5 shrink-0" />
+          <Calendar className="w-6 h-6 shrink-0" />
           <span className="text-[13px] leading-tight whitespace-nowrap">الجدول</span>
         </button>
 
@@ -88,12 +88,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSelectTab('alerts');
               }}
               title="فتح قائمة التنبيهات كاملة"
-              className="absolute top-1 right-1 md:top-1.5 md:right-2 min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#D92D20] text-white text-[12px] font-mono font-bold flex items-center justify-center shadow-xs cursor-pointer"
+              className="absolute top-1 right-1 md:top-1.5 md:right-2 min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#D92D20] text-white text-[13px] font-mono font-bold flex items-center justify-center shadow-xs cursor-pointer"
             >
               {alertCount}
             </span>
           )}
-          <Bell className="w-5 h-5 shrink-0" />
+          <Bell className="w-6 h-6 shrink-0" />
           <span className="text-[13px] leading-tight whitespace-nowrap">التنبيهات</span>
         </button>
 
@@ -105,7 +105,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             activeTab === 'analytics'
           )}`}
         >
-          <BarChart3 className="w-5 h-5 shrink-0" />
+          <BarChart3 className="w-6 h-6 shrink-0" />
           <span className="text-[13px] leading-tight whitespace-nowrap">التحليلات</span>
         </button>
 
@@ -118,7 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               activeTab === 'users'
             )}`}
           >
-            <Users className="w-5 h-5 shrink-0" />
+            <Users className="w-6 h-6 shrink-0" />
             <span className="text-[13px] leading-tight whitespace-nowrap">المستخدمون</span>
           </button>
         )}
@@ -127,10 +127,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           type="button"
           onClick={onOpenImport}
-          className="flex-1 md:flex-none md:w-full py-2.5 px-1.5 rounded-xl flex flex-col items-center justify-center gap-1.5 transition-colors font-semibold text-[#483878] dark:text-[#A9DDF5] hover:text-[#E8742A] hover:bg-[#A9DDF5]/20 dark:hover:bg-slate-800 border border-[#A9DDF5] dark:border-slate-700 bg-[#F7FBFE] dark:bg-slate-800/70 cursor-pointer text-center"
+          className="flex-1 md:flex-none md:w-full py-2.5 px-1.5 rounded-xl flex flex-col items-center justify-center gap-1.5 transition-colors font-semibold text-[#2E2252] dark:text-[#A9DDF5] hover:text-[#E8742A] hover:bg-[#A9DDF5]/20 dark:hover:bg-slate-800 border border-[#A9DDF5] dark:border-slate-700 bg-[#F7FBFE] dark:bg-slate-800/70 cursor-pointer text-center"
           title="استيراد وتحديث جدول إكسل"
         >
-          <FileSpreadsheet className="w-5 h-5 shrink-0" />
+          <FileSpreadsheet className="w-6 h-6 shrink-0" />
           <span className="text-[13px] leading-tight whitespace-nowrap">استيراد</span>
         </button>
       </nav>
